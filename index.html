@@ -492,11 +492,16 @@
       <div class="kpi">
         <div class="kpi-label">HTTP req públicos/dia</div>
         <div class="kpi-value">740K</div>
-        <div class="kpi-sub">514 rpm</div>
+        <div class="kpi-sub">514 rpm no cms-api</div>
+      </div>
+      <div class="kpi">
+        <div class="kpi-label">Pageviews estimadas/dia</div>
+        <div class="kpi-value warning">~865K</div>
+        <div class="kpi-sub">3.620 rpm em S3</div>
       </div>
       <div class="kpi">
         <div class="kpi-label">Fan-out OS/HTTP</div>
-        <div class="kpi-value warning">2,01×</div>
+        <div class="kpi-value">2,01×</div>
         <div class="kpi-sub">N+1 confirmado</div>
       </div>
       <div class="kpi">
@@ -514,6 +519,17 @@
         geradas por <strong>100% pelos 3 endpoints públicos</strong> chamados pelo renderer no SSR de sites publicados.
         O fan-out de <strong>2,01 queries OS por HTTP request</strong> é a assinatura de N+1 no lookup
         <code>getContentTypeById</code>.
+      </p>
+    </div>
+
+    <div class="callout warning">
+      <div class="callout-title">⚠ Descoberta lateral: volume de pageviews desproporcional</div>
+      <p>
+        O renderer faz <strong>3.620 rpm em S3</strong> para JSONs de páginas — extrapolando por ~6 fetches S3/pageview,
+        dá <strong>~600 pageviews/min ≈ 865K pageviews/dia</strong>. Se o volume esperado é ordens de grandeza menor
+        (poucos sites × poucas visits/dia), há forte suspeita de <strong>tráfego não-humano</strong>
+        (AI crawlers, uptime monitors, scanners). Confirmar via User-Agent está pendente
+        — NR não captura headers por default.
       </p>
     </div>
 
@@ -749,8 +765,162 @@
       </p>
     </div>
 
-    <!-- Section 5: Fan-out -->
-    <h2>5. Fan-out: queries OS por HTTP request</h2>
+    <!-- Section 5: External services do renderer -->
+    <h2>5. Renderer: external services (para onde as chamadas vão)</h2>
+    <p>Fonte: New Relic APM <code>atd-workspace-renderer</code> — top 20 external services por throughput.</p>
+
+    <div class="card">
+      <div class="card-grid-2">
+        <div>
+          <table>
+            <thead>
+              <tr>
+                <th>Destino</th>
+                <th class="num">rpm</th>
+                <th>O que é</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><code>ws-channels-json.s3...</code></td>
+                <td class="num strong">3.620</td>
+                <td>JSONs de página, metadata, styleguide, channel</td>
+              </tr>
+              <tr>
+                <td><code>cmsv3.autodromo.com.br</code></td>
+                <td class="num strong">511</td>
+                <td>CMS público (bate 1:1 com cms-api)</td>
+              </tr>
+              <tr>
+                <td><code>ws-channels-form-json.s3...</code></td>
+                <td class="num">180</td>
+                <td>JSONs de forms</td>
+              </tr>
+              <tr>
+                <td><code>ds5psru6p9rwo.cloudfront.net</code></td>
+                <td class="num">0,59</td>
+                <td>Fontes / assets</td>
+              </tr>
+            </tbody>
+          </table>
+
+          <div class="callout" style="margin-top: 16px;">
+            <div class="callout-title">Estimativa de pageviews</div>
+            <p style="font-size: 14px;">
+              3.620 S3 calls/min ÷ ~6 fetches/pageview ≈ <strong>600 pageviews/min</strong>
+              = <strong>~865K pageviews/dia</strong>.
+            </p>
+          </div>
+        </div>
+        <div>
+          <div class="chart-wrapper"><canvas id="chartRendererExt"></canvas></div>
+        </div>
+      </div>
+
+      <h3 style="margin-top: 24px;">Confirmação: renderer é a única fonte do CMS</h3>
+      <p>
+        511 rpm saindo do renderer para <code>cmsv3.autodromo.com.br</code> vs. 514 rpm chegando no cms-api nos
+        endpoints públicos.
+        Diferença de 0,6% (ruído estatístico). <strong>100% do tráfego CMS vem do renderer</strong> — descarta
+        qualquer suspeita de cliente externo, script, ou consumidor não-mapeado.
+      </p>
+
+      <h3 style="margin-top: 20px;">Alerta: latência do CMS ↔ renderer</h3>
+      <p>
+        Response time médio do renderer → CMS: <strong>804 ms</strong>. Bonsai reporta 2-6ms de latência interna.
+        Cada request CMS custa ~800ms do SSR — em páginas com múltiplos blocos dinâmicos em paralelo,
+        chega aos 5,8s worst-case observados. Explica o Apdex de 71,69%.
+      </p>
+    </div>
+
+    <!-- Section 6: Time consumption by caller (renderer) -->
+    <h2>6. Renderer: tempo por rota</h2>
+    <p>Fonte: New Relic APM — external service callers, total 592k segundos consumidos em I/O externo.</p>
+
+    <div class="card">
+      <div class="card-grid-2">
+        <div>
+          <table>
+            <thead>
+              <tr>
+                <th>Rota</th>
+                <th class="num">Tempo</th>
+                <th class="num">%</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><code>GET /</code></td>
+                <td class="num">247k s</td>
+                <td class="num strong">41,72%</td>
+              </tr>
+              <tr>
+                <td><code>GET /[slug]/[item]</code></td>
+                <td class="num">176k s</td>
+                <td class="num strong">29,83%</td>
+              </tr>
+              <tr>
+                <td><code>GET /[slug]</code></td>
+                <td class="num">115k s</td>
+                <td class="num strong">19,39%</td>
+              </tr>
+              <tr>
+                <td>Other</td>
+                <td class="num">20,9k s</td>
+                <td class="num">3,53%</td>
+              </tr>
+              <tr>
+                <td><code>HEAD /</code> ⚠</td>
+                <td class="num">17,8k s</td>
+                <td class="num">3,00%</td>
+              </tr>
+              <tr>
+                <td><code>GET /404</code> ⚠</td>
+                <td class="num">14,9k s</td>
+                <td class="num">2,52%</td>
+              </tr>
+              <tr class="row-total">
+                <td>SSR de páginas legítimas</td>
+                <td class="num">—</td>
+                <td class="num highlight">90,94%</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <div>
+          <div class="chart-wrapper"><canvas id="chartRendererRoutes"></canvas></div>
+        </div>
+      </div>
+
+      <h3 style="margin-top: 24px;">Sinais suspeitos: HEAD e 404</h3>
+      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-top: 12px;">
+        <div class="hypothesis partial" style="align-items: flex-start;">
+          <span class="badge partial">HEAD /</span>
+          <div class="hypothesis-text">
+            <div class="hypothesis-title">3,00% (17,8k s) só na home</div>
+            <div class="hypothesis-evidence">
+              HEAD é método usado por <strong>uptime monitors</strong> (Pingdom, UptimeRobot, StatusCake)
+              e <strong>alguns crawlers</strong> antes de GET.
+              Se o Next não faz short-circuit em HEAD, roda SSR completo pra devolver só headers.
+            </div>
+          </div>
+        </div>
+        <div class="hypothesis partial" style="align-items: flex-start;">
+          <span class="badge partial">GET /404</span>
+          <div class="hypothesis-text">
+            <div class="hypothesis-title">2,52% (14,9k s) em páginas inexistentes</div>
+            <div class="hypothesis-evidence">
+              Assinatura típica de <strong>scanners tentando URLs de exploit</strong>
+              (<code>/wp-admin</code>, <code>/.env</code>) ou <strong>crawlers com cache de URLs velhas</strong>.
+              Verificar se rota 404 faz curto-circuito antes do fetch.
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Section 7: Fan-out -->
+    <h2>7. Fan-out: queries OS por HTTP request</h2>
 
     <div class="fanout">
       <div class="fanout-box request">
@@ -817,8 +987,8 @@
       </table>
     </div>
 
-    <!-- Section 6: Hypotheses -->
-    <h2>6. Estado final das hipóteses</h2>
+    <!-- Section 8: Hypotheses -->
+    <h2>8. Estado final das hipóteses</h2>
     <div class="card">
       <div class="hypothesis confirmed">
         <span class="badge confirmed">confirmada</span>
@@ -878,8 +1048,8 @@
       </div>
     </div>
 
-    <!-- Section 7: Quick win -->
-    <h2>7. Quick win: cache in-memory de <code>getContentTypeById</code></h2>
+    <!-- Section 9: Quick win -->
+    <h2>9. Quick win: cache in-memory de <code>getContentTypeById</code></h2>
 
     <div class="card">
       <h3>Impacto quantificado</h3>
@@ -935,11 +1105,19 @@
       </p>
     </div>
 
-    <!-- Section 8: Anomalies -->
-    <h2>8. Anomalias fora do escopo</h2>
+    <!-- Section 10: Anomalies -->
+    <h2>10. Anomalias e follow-ups fora do escopo</h2>
     <div class="callout warning">
-      <div class="callout-title">Follow-ups para investigar</div>
+      <div class="callout-title">Investigações abertas</div>
       <ul style="margin-top: 8px;">
+        <li><strong>Origem do tráfego no renderer (bloqueada)</strong> — NR não captura <code>User-Agent</code> por
+          default no agente Node. Habilitar <code>attributes.include: ['request.headers.userAgent']</code> em
+          <code>apps/renderer/newrelic.js</code> ou usar <code>newrelic.addCustomAttribute</code> no
+          <code>getServerSideProps</code>. Alternativa: ALB access logs (se habilitados).</li>
+        <li><strong><code>HEAD /</code> = 3% do tempo</strong> — provável uptime monitor. Verificar quem bate e se Next
+          roda SSR pra retornar só headers.</li>
+        <li><strong><code>GET /404</code> = 2,52% do tempo</strong> — verificar se rota 404 dispara fetches ao S3/CMS
+          antes de decidir que é 404. Se sim, esforço grátis pra evitar.</li>
         <li><strong>Highest error rate: 100%</strong> — algum endpoint falha 100% no período; descobrir qual</li>
         <li><strong>Slowest avg response: 5,8s</strong> — SSR trava em 5,8s no pior caso, provavelmente
           <code>/entries/:slug</code> com relações pesadas</li>
@@ -951,8 +1129,8 @@
       </ul>
     </div>
 
-    <!-- Section 9: Actions -->
-    <h2>9. Ações priorizadas</h2>
+    <!-- Section 11: Actions -->
+    <h2>11. Ações priorizadas</h2>
     <ul class="action-list">
       <li class="action p1">
         <span class="action-priority">P1</span>
@@ -963,6 +1141,18 @@
             Hit rate esperado >99% (content types são editados raríssimo).
           </div>
           <span class="action-impact">Impacto: -48% no Bonsai · Esforço: baixo</span>
+        </div>
+      </li>
+      <li class="action p1">
+        <span class="action-priority">P1</span>
+        <div>
+          <div class="action-title">Habilitar captura de <code>User-Agent</code> no NR do renderer</div>
+          <div class="action-desc">
+            Sem isso, a origem dos ~865K pageviews/dia fica cega. Adicionar
+            <code>attributes.include: ['request.headers.userAgent', 'request.headers.host']</code>
+            em <code>apps/renderer/newrelic.js</code>. Deploy leve, sem código.
+          </div>
+          <span class="action-impact">Impacto: desbloqueia investigação da causa raiz do volume · Esforço: mínimo</span>
         </div>
       </li>
       <li class="action p2">
@@ -985,6 +1175,28 @@
           <span class="action-impact">Impacto potencial: -20 a -30% adicionais · Esforço: baixo</span>
         </div>
       </li>
+      <li class="action p2">
+        <span class="action-priority">P2</span>
+        <div>
+          <div class="action-title">CDN + <code>Cache-Control</code> no renderer</div>
+          <div class="action-desc">
+            Se confirmado que 865K pageviews/dia vem majoritariamente de bots/crawlers, um CDN na frente
+            do renderer com TTL curto (mesmo 30s) reduz muito a carga tanto do renderer quanto do CMS.
+            Depende de definir User-Agents que podem cachear e ver conteúdo estático.
+          </div>
+          <span class="action-impact">Impacto potencial: -50% ou mais · Esforço: médio</span>
+        </div>
+      </li>
+      <li class="action p3">
+        <span class="action-priority">P3</span>
+        <div>
+          <div class="action-title">Short-circuit em <code>HEAD /</code> e <code>GET /404</code></div>
+          <div class="action-desc">
+            Verificar se essas rotas ainda fazem fetches externos. Se sim, curto-circuito bare-metal
+            antes do <code>getServerSideProps</code> economiza ~5,5% do tempo de I/O do renderer.
+          </div>
+        </div>
+      </li>
       <li class="action p3">
         <span class="action-priority">P3</span>
         <div>
@@ -996,18 +1208,26 @@
       </li>
     </ul>
 
-    <!-- Section 10: Conclusion -->
-    <h2>10. Conclusão</h2>
+    <!-- Section 12: Conclusion -->
+    <h2>12. Conclusão</h2>
     <div class="callout">
       <p>
         O volume de 1,6M requests/dia ao Bonsai <strong>não é um mistério</strong>: é o resultado direto de
-        <strong>~740K pageviews de sites publicados</strong>, cada uma disparando 2 queries OS via
-        <code>getServerSideProps</code> do renderer.
+        <strong>~740K requests HTTP ao cms-api</strong>, com fan-out 2:1 confirmado.
         <strong>Metade dessas queries é evitável trivialmente</strong> com cache in-memory do lookup de content type.
       </p>
       <p style="margin-top: 12px;">
-        A spike de investigação está <strong>concluída</strong>. O caminho está claro para reduzir o Bonsai
-        em quase metade com uma única mudança de baixo esforço.
+        <strong>Porém, apareceu um segundo problema:</strong> o renderer processa
+        <strong>~865K pageviews/dia</strong> — número que não bate com o volume esperado de clientes.
+        Antes de assumir que é tráfego legítimo, precisa validar via User-Agent (bloqueado hoje por config default do
+        NR).
+        Se boa parte for bot/crawler, o real ganho não é otimizar OS — é <strong>colocar CDN na frente do
+          renderer</strong>.
+      </p>
+      <p style="margin-top: 12px;">
+        A spike do OS está <strong>concluída</strong>: caminho claro para -48% no Bonsai com uma mudança de baixo
+        esforço.
+        Uma <strong>investigação nova está aberta</strong>: descobrir de onde vêm os pageviews.
       </p>
     </div>
 
@@ -1136,7 +1356,56 @@
       }
     });
 
-    // Chart 5: Quick win before/after
+    // Chart 5: Renderer external services
+    new Chart(document.getElementById('chartRendererExt'), {
+      type: 'bar',
+      data: {
+        labels: ['ws-channels-json (S3)', 'cmsv3 (CMS)', 'ws-channels-form-json (S3)', 'CloudFront (fontes)'],
+        datasets: [{
+          label: 'calls/min',
+          data: [3620, 511, 180, 0.59],
+          backgroundColor: [palette.secondary, palette.primary, palette.tertiary, palette.dim],
+          borderRadius: 6,
+        }]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        indexAxis: 'y',
+        plugins: {
+          legend: { display: false },
+          tooltip: { callbacks: { label: (ctx) => `${ctx.raw} calls/min` } }
+        },
+        scales: {
+          x: { type: 'logarithmic', grid: { color: '#2c3540' }, ticks: { color: '#a0a8b0' } },
+          y: { grid: { display: false }, ticks: { color: '#e6e6e6', font: { size: 12 } } }
+        }
+      }
+    });
+
+    // Chart 6: Renderer routes time consumption
+    new Chart(document.getElementById('chartRendererRoutes'), {
+      type: 'doughnut',
+      data: {
+        labels: ['GET /', 'GET /[slug]/[item]', 'GET /[slug]', 'Other', 'HEAD / ⚠', 'GET /404 ⚠'],
+        datasets: [{
+          data: [41.72, 29.83, 19.39, 3.53, 3.00, 2.52],
+          backgroundColor: [palette.primary, palette.secondary, palette.tertiary, palette.dim, palette.warning, palette.danger],
+          borderColor: '#1a2028',
+          borderWidth: 2,
+        }]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+          legend: { position: 'bottom', labels: { padding: 10, font: { size: 11 } } },
+          tooltip: { callbacks: { label: (ctx) => `${ctx.label}: ${ctx.raw}%` } }
+        }
+      }
+    });
+
+    // Chart 7: Quick win before/after
     new Chart(document.getElementById('chartQuickWin'), {
       type: 'bar',
       data: {
