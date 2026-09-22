@@ -514,6 +514,16 @@
         <div class="kpi-value success">-48%</div>
         <div class="kpi-sub">com quick win</div>
       </div>
+      <div class="kpi">
+        <div class="kpi-label">Concorrência do plano Bonsai</div>
+        <div class="kpi-value danger">2 / 2</div>
+        <div class="kpi-sub">teto do plano — saturado o tempo todo</div>
+      </div>
+      <div class="kpi">
+        <div class="kpi-label">Peak de Proxy Queue time</div>
+        <div class="kpi-value danger">~800k ms</div>
+        <div class="kpi-sub">spike em 22/09 15:00 · queries esperando slot livre</div>
+      </div>
     </div>
 
     <div class="callout">
@@ -546,6 +556,38 @@
       <p style="font-size: 14px; margin-top: 8px;">
         Quando números de fontes diferentes parecem "casar", isso é <strong>consistente com uma hipótese</strong>,
         não uma prova dela. Trate cada correlação como forte indício até haver medição per-request.
+      </p>
+    </div>
+
+    <div class="callout warning">
+      <div class="callout-title">⚠ Sinal crítico: o plano Bonsai está saturado — isso não é só sobre volume, é sobre
+        fila</div>
+      <p style="font-size: 14px;">
+        Dois gráficos do dashboard do Bonsai mudam o framing do problema:
+      </p>
+      <ul style="font-size: 14px; margin-top: 8px;">
+        <li>
+          <strong>Concurrency</strong>: linha <strong>topada em 2</strong> durante toda a janela observada.
+          Esse é o <strong>teto do plano atual</strong> — o cluster nunca consegue processar mais de 2 queries
+          simultâneas. Quando chega uma 3ª, ela entra em fila.
+        </li>
+        <li>
+          <strong>Proxy Queue time</strong>: tempo acumulado de queries esperando slot livre.
+          Cresce ao longo do dia e <strong>spike a ~800k ms por volta das 15:00</strong> em 22/09. Esse tempo
+          é somado direto à resposta de cada query, e por transitividade à latência do SSR do renderer que está
+          esperando o cms-api.
+        </li>
+      </ul>
+      <p style="font-size: 14px; margin-top: 12px;">
+        Consequência prática: as 48% de queries evitáveis (lookup redundante de content type)
+        <strong>não estão só ocupando volume — estão gastando slots de concorrência do teto</strong>,
+        empurrando as queries que realmente precisam ir ao índice para a fila. Cortar essas queries
+        libera slots, e o efeito na latência p95 tende a ser <strong>desproporcionalmente maior</strong>
+        que os -48% de volume bruto, porque queue time cresce não-linearmente perto do teto.
+      </p>
+      <p style="font-size: 14px; margin-top: 8px;">
+        Escalar o plano Bonsai para aumentar o teto é uma resposta ao sintoma, não à causa. Antes de pagar
+        mais por concorrência maior, faz sentido parar de gastar slots com um lookup evitável.
       </p>
     </div>
 
@@ -1509,6 +1551,23 @@
         serialização).
         Cache local elimina esse overhead 100% — impacto direto em <strong>latência do SSR do renderer</strong>
         e no Apdex de 71,69%.
+      </p>
+    </div>
+
+    <div class="callout warning">
+      <div class="callout-title">Bônus 2: alívio direto da fila do Bonsai</div>
+      <p>
+        Como o plano atual tem <strong>concorrência topada em 2</strong> e o Proxy Queue time já sobe durante o
+        dia (spike observado de ~800k ms em 22/09 15:00), cada query eliminada <strong>libera um slot de
+          concorrência</strong> para as queries que realmente precisam ir ao índice. O efeito na latência p95
+        tende a ser <strong>maior que os -48% de volume bruto</strong>, porque queue time cresce
+        não-linearmente perto do teto — reduzir a demanda em 48% quando o sistema está saturado gera
+        alívio proporcionalmente maior no tempo de espera.
+      </p>
+      <p style="margin-top: 8px;">
+        Métrica a acompanhar pós-deploy: o pico de <strong>Proxy Queue time</strong> no dashboard do Bonsai
+        deve cair drasticamente. Se não cair, a hipótese de que o gargalo é o lookup de content type está
+        errada e vale reinvestigar antes de aumentar o plano.
       </p>
     </div>
 
