@@ -495,14 +495,19 @@
         <div class="kpi-sub">514 rpm no cms-api</div>
       </div>
       <div class="kpi">
-        <div class="kpi-label">Pageviews estimadas/dia</div>
-        <div class="kpi-value warning">~865K</div>
-        <div class="kpi-sub">3.620 rpm em S3</div>
+        <div class="kpi-label">Requests/dia no renderer</div>
+        <div class="kpi-value">~820K</div>
+        <div class="kpi-sub">570 rpm somando todas as rotas</div>
       </div>
       <div class="kpi">
-        <div class="kpi-label">Fan-out OS/HTTP</div>
+        <div class="kpi-label">Pageviews de conteúdo/dia</div>
+        <div class="kpi-value">~503K</div>
+        <div class="kpi-sub">349,6 rpm (home, slug e item)</div>
+      </div>
+      <div class="kpi">
+        <div class="kpi-label">Fan-out OS por request HTTP</div>
         <div class="kpi-value">2,01×</div>
-        <div class="kpi-sub">N+1 confirmado</div>
+        <div class="kpi-sub">1 lookup + 1 search</div>
       </div>
       <div class="kpi">
         <div class="kpi-label">Redução possível</div>
@@ -512,29 +517,47 @@
     </div>
 
     <div class="callout">
-      <div class="callout-title">Diagnóstico principal</div>
+      <div class="callout-title">Como ler este documento</div>
       <p>
-        <strong>93% do volume OS vem de 2 operações de search</strong> (<code>cms_content_types_v2</code> +
-        <code>cms_content_entries_v3</code>),
-        geradas por <strong>100% pelos 3 endpoints públicos</strong> chamados pelo renderer no SSR de sites publicados.
-        O fan-out de <strong>2,01 queries OS por HTTP request</strong> é a assinatura de N+1 no lookup
-        <code>getContentTypeById</code>.
+        O objetivo é entender <strong>por que o Bonsai (OpenSearch) recebe 1,6M requests por dia</strong>.
+        A investigação segue o caminho da chamada: começa no cluster (o que executa as queries),
+        identifica quem gera cada query no cms-api, e sobe até a rota do renderer que originou o tráfego.
+        Ao final, chega-se ao diagnóstico principal e às ações que podem reduzir o volume.
+      </p>
+      <p style="margin-top: 12px;">
+        <strong>Diagnóstico principal:</strong> 93% do tráfego do OpenSearch vem de apenas 2 operações
+        (busca em <code>cms_content_types_v2</code> e <code>cms_content_entries_v3</code>).
+        Elas são acionadas por 3 endpoints públicos do cms-api, chamados pelo renderer durante o SSR das páginas.
+        A cada request HTTP que o cms-api recebe, ele faz <strong>2 buscas no OpenSearch</strong>:
+        uma para descobrir o tipo de conteúdo (<code>getContentTypeById</code>) e outra para o dado em si.
+        Como o tipo de conteúdo muda raramente, essa primeira busca é <strong>evitável com cache</strong>.
       </p>
     </div>
 
     <div class="callout warning">
-      <div class="callout-title">⚠ Descoberta lateral: volume de pageviews desproporcional</div>
-      <p>
-        O renderer faz <strong>3.620 rpm em S3</strong> para JSONs de páginas — extrapolando por ~6 fetches S3/pageview,
-        dá <strong>~600 pageviews/min ≈ 865K pageviews/dia</strong>. Se o volume esperado é ordens de grandeza menor
-        (poucos sites × poucas visits/dia), há forte suspeita de <strong>tráfego não-humano</strong>
-        (AI crawlers, uptime monitors, scanners). Confirmar via User-Agent está pendente
-        — NR não captura headers por default.
+      <div class="callout-title">Sobre a solidez dos números</div>
+      <p style="font-size: 14px;">
+        Todos os dados abaixo vêm de <strong>medições independentes</strong>: New Relic APM do cms-api,
+        New Relic APM do renderer, e o dashboard do Bonsai. Isso significa que estão sujeitos a
+        <strong>sampling</strong> (o agente não coleta 100% dos eventos), <strong>instrumentação parcial</strong>
+        (o agente do Node pode não capturar chamadas feitas via <code>fetch</code> nativo),
+        e <strong>janelas de 24h possivelmente desalinhadas</strong> entre prints feitos em momentos diferentes.
+      </p>
+      <p style="font-size: 14px; margin-top: 8px;">
+        Quando números de fontes diferentes parecem "casar", isso é <strong>consistente com uma hipótese</strong>,
+        não uma prova dela. Trate cada correlação como forte indício até haver medição per-request.
       </p>
     </div>
 
     <!-- Section 1: OS Operations breakdown -->
     <h2>1. Distribuição do tempo em operações de DB</h2>
+    <p>
+      O primeiro passo é entender <strong>onde o cms-api gasta tempo em I/O de banco</strong>.
+      O New Relic APM lista as operações de banco por tempo total consumido no período — quanto
+      mais alto o percentual, mais o cms-api ficou esperando aquela operação. Isso não é o mesmo
+      que "quantas vezes foi chamado", mas ajuda a priorizar: o que consome muito tempo é o
+      candidato natural para otimização.
+    </p>
     <div class="card">
       <div class="card-grid-2">
         <div>
@@ -584,8 +607,19 @@
     </div>
 
     <!-- Section 2: Callers per index -->
-    <h2>2. Callers por índice OpenSearch</h2>
-    <p>Ambos os índices são consumidos <strong>100% pelos 3 endpoints públicos</strong>. Endpoints admin não aparecem.
+    <h2>2. Quem chama cada índice do OpenSearch</h2>
+    <p>
+      Depois de identificar que dois índices dominam o tempo (<code>cms_content_types_v2</code> e
+      <code>cms_content_entries_v3</code>), o próximo passo é descobrir <strong>quais endpoints do
+        cms-api geram queries nesses índices</strong>. O New Relic mostra o breakdown por caller,
+      ou seja, por transação HTTP que chamou aquela operação. Isso permite atribuir cada query
+      OpenSearch a um endpoint específico.
+    </p>
+    <p>
+      O resultado é bem concentrado: <strong>ambos os índices são consumidos 100% pelos três
+        endpoints públicos</strong>. Endpoints administrativos (usados pelo builder e pelo painel
+      admin) não aparecem no ranking, o que significa que builder e uso interno não contribuem
+      para o volume — a origem é exclusivamente o SSR de páginas publicadas.
     </p>
 
     <div class="card-grid-2">
@@ -656,6 +690,14 @@
 
     <!-- Section 3: Volume -->
     <h2>3. Volume por operação (calls per minute)</h2>
+    <p>
+      Tempo consumido só mostra o custo relativo, mas não a frequência. Trocando o ordenamento
+      do New Relic para <strong>throughput (calls per minute)</strong>, é possível ver quantas
+      vezes cada operação foi chamada no período. Extrapolando por 60 minutos × 24 horas, chega-se
+      ao volume diário — que pode ser comparado diretamente com o total mostrado no dashboard
+      do Bonsai. Se os números baterem, isso confirma que essas duas operações realmente
+      respondem pela quase totalidade do tráfego observado.
+    </p>
     <div class="card">
       <table>
         <thead>
@@ -691,7 +733,14 @@
     </div>
 
     <!-- Section 4: HTTP transactions -->
-    <h2>4. Top HTTP transactions (Web)</h2>
+    <h2>4. Top HTTP transactions do cms-api</h2>
+    <p>
+      Agora invertendo o ponto de vista: em vez de olhar operações de banco, olhamos os
+      <strong>endpoints HTTP recebidos pelo cms-api</strong>. Assim é possível confirmar por
+      outro caminho o que a seção 2 já sugeriu — quais endpoints concentram o tráfego. Se os
+      três endpoints públicos aparecerem no topo com volumes altos e os endpoints administrativos
+      forem irrelevantes, o diagnóstico é consistente.
+    </p>
     <div class="card">
       <table>
         <thead>
@@ -766,8 +815,17 @@
     </div>
 
     <!-- Section 5: External services do renderer -->
-    <h2>5. Renderer: external services (para onde as chamadas vão)</h2>
-    <p>Fonte: New Relic APM <code>atd-workspace-renderer</code> — top 20 external services por throughput.</p>
+    <h2>5. Renderer: external services (para onde ele chama)</h2>
+    <p>
+      Até aqui, foi mapeado o que acontece dentro do cms-api. Agora sobe-se para o
+      <strong>renderer</strong>, que é o serviço que executa o SSR das páginas dos sites publicados
+      e chama o cms-api quando precisa de dados. O painel "external services" do New Relic mostra
+      para quais serviços externos o renderer manda requisições e com que frequência — isso ajuda
+      a confirmar se o renderer é mesmo a origem exclusiva do tráfego que chega no cms-api.
+    </p>
+    <p style="color: var(--text-dim); font-size: 13px;">
+      Fonte: New Relic APM <code>atd-workspace-renderer</code> — top 20 external services por throughput, últimas 24h.
+    </p>
 
     <div class="card">
       <div class="card-grid-2">
@@ -805,10 +863,10 @@
           </table>
 
           <div class="callout" style="margin-top: 16px;">
-            <div class="callout-title">Estimativa de pageviews</div>
+            <div class="callout-title">Estimativa de pageviews (via S3)</div>
             <p style="font-size: 14px;">
-              3.620 S3 calls/min ÷ ~6 fetches/pageview ≈ <strong>600 pageviews/min</strong>
-              = <strong>~865K pageviews/dia</strong>.
+              3.620 S3 calls/min ÷ ~6-7 fetches/request ≈ <strong>520-600 requests/min</strong>.
+              Bate com o total de rotas do renderer medido diretamente (~570 rpm).
             </p>
           </div>
         </div>
@@ -817,12 +875,13 @@
         </div>
       </div>
 
-      <h3 style="margin-top: 24px;">Confirmação: renderer é a única fonte do CMS</h3>
+      <h3 style="margin-top: 24px;">Renderer → CMS: 511 rpm outbound vs. 514 rpm inbound</h3>
       <p>
-        511 rpm saindo do renderer para <code>cmsv3.autodromo.com.br</code> vs. 514 rpm chegando no cms-api nos
-        endpoints públicos.
-        Diferença de 0,6% (ruído estatístico). <strong>100% do tráfego CMS vem do renderer</strong> — descarta
-        qualquer suspeita de cliente externo, script, ou consumidor não-mapeado.
+        <strong>Consistente</strong> com renderer sendo a fonte dominante do CMS, mas <strong>não é prova</strong>:
+        as duas medições cobrem escopos diferentes (outbound-todos-paths vs. inbound-3-endpoints-filtrados),
+        sujeitas a sampling do agente e possíveis desalinhamentos de janela.
+        3 rpm de diferença pode ser: outros endpoints do cms-api que o renderer chama (mas não estavam no filtro),
+        retries HTTP, ou health checks internos.
       </p>
 
       <h3 style="margin-top: 20px;">Alerta: latência do CMS ↔ renderer</h3>
@@ -833,9 +892,172 @@
       </p>
     </div>
 
+    <!-- Section 6: Renderer transactions by throughput -->
+    <h2>6. Renderer: distribuição do tráfego por rota</h2>
+    <p>
+      Aqui vemos <strong>qual rota do renderer está recebendo cada request</strong>. Isso importa porque
+      o renderer é a origem exclusiva das chamadas ao cms-api — entender quais rotas geram mais pageviews
+      ajuda a entender de onde vem o volume no CMS.
+      Fonte: New Relic APM, top 20 transactions Web por throughput (rpm), últimas 24h.
+    </p>
+
+    <div class="card">
+      <div class="card-grid-2">
+        <div>
+          <table>
+            <thead>
+              <tr>
+                <th>Rota</th>
+                <th class="num">rpm</th>
+                <th class="num">req/dia</th>
+                <th>Descrição</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><code>GET /[slug]</code></td>
+                <td class="num strong">221</td>
+                <td class="num">318K</td>
+                <td>Páginas estáticas de conteúdo</td>
+              </tr>
+              <tr>
+                <td><code>GET /404</code></td>
+                <td class="num strong">172</td>
+                <td class="num">248K</td>
+                <td>Página não encontrada</td>
+              </tr>
+              <tr>
+                <td><code>GET /</code></td>
+                <td class="num strong">69,8</td>
+                <td class="num">100K</td>
+                <td>Home dos sites</td>
+              </tr>
+              <tr>
+                <td><code>GET /[slug]/[item]</code></td>
+                <td class="num strong">58,8</td>
+                <td class="num">85K</td>
+                <td>Página de detalhe de item</td>
+              </tr>
+              <tr>
+                <td><code>HEAD /</code></td>
+                <td class="num">18,6</td>
+                <td class="num">27K</td>
+                <td>HEAD na home (verificação sem body)</td>
+              </tr>
+              <tr>
+                <td><code>*</code> (misc)</td>
+                <td class="num">9,59</td>
+                <td class="num">14K</td>
+                <td>Outros paths agrupados</td>
+              </tr>
+              <tr>
+                <td><code>GET /robots.txt</code></td>
+                <td class="num">5,43</td>
+                <td class="num">7,8K</td>
+                <td>Arquivo de metadados servido no root do site</td>
+              </tr>
+              <tr>
+                <td><code>*.ico</code></td>
+                <td class="num">4,18</td>
+                <td class="num">6K</td>
+                <td>Favicons</td>
+              </tr>
+              <tr>
+                <td><code>HEAD /404</code></td>
+                <td class="num">1,9</td>
+                <td class="num">2,7K</td>
+                <td>HEAD em página inexistente</td>
+              </tr>
+              <tr>
+                <td><code>GET /sitemap.xml</code></td>
+                <td class="num">1,73</td>
+                <td class="num">2,5K</td>
+                <td>Sitemap raiz (gerado on-demand)</td>
+              </tr>
+              <tr>
+                <td><code>GET /api/sitemap/[name]</code></td>
+                <td class="num">1,71</td>
+                <td class="num">2,5K</td>
+                <td>Sub-sitemaps por coleção</td>
+              </tr>
+              <tr>
+                <td><code>GET /_error</code></td>
+                <td class="num">1,61</td>
+                <td class="num">2,3K</td>
+                <td>Handler de erro do Next</td>
+              </tr>
+              <tr>
+                <td><code>POST /404</code></td>
+                <td class="num">1,49</td>
+                <td class="num">2,1K</td>
+                <td>POST em página inexistente</td>
+              </tr>
+              <tr>
+                <td><code>*.js</code></td>
+                <td class="num">1,07</td>
+                <td class="num">1,5K</td>
+                <td>Assets JavaScript</td>
+              </tr>
+              <tr>
+                <td><code>HEAD /[slug]</code></td>
+                <td class="num">0,91</td>
+                <td class="num">1,3K</td>
+                <td>HEAD em página estática</td>
+              </tr>
+              <tr class="row-total">
+                <td>Total visível</td>
+                <td class="num">~570</td>
+                <td class="num">~820K</td>
+                <td></td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <div>
+          <div class="chart-wrapper" style="height: 400px;"><canvas id="chartRendererTransactions"></canvas></div>
+        </div>
+      </div>
+
+      <h3 style="margin-top: 24px;">O que essas rotas significam para o cms-api</h3>
+      <p>
+        Nem toda rota do renderer chama o cms-api. Apenas as <strong>rotas de conteúdo</strong>
+        (<code>/</code>, <code>/[slug]</code>, <code>/[slug]/[item]</code>) executam o
+        <code>getServerSideProps</code> que dispara <code>fetchAllDynamicContents</code> e
+        (no caso do item) <code>fetchCMS</code>. Somando essas três:
+      </p>
+      <div class="card-grid-2">
+        <div class="callout">
+          <div class="callout-title">Rotas que servem página de conteúdo</div>
+          <p style="font-size: 24px; font-weight: 700; color: var(--success); margin: 8px 0;">~503K/dia</p>
+          <p style="font-size: 13px;">
+            <code>/[slug]</code> (221 rpm) + <code>/</code> (69,8 rpm) + <code>/[slug]/[item]</code> (58,8 rpm)
+            = <strong>349,6 rpm</strong>
+          </p>
+        </div>
+        <div class="callout">
+          <div class="callout-title">Demais rotas</div>
+          <p style="font-size: 24px; font-weight: 700; color: var(--text); margin: 8px 0;">~317K/dia</p>
+          <p style="font-size: 13px;">
+            Inclui <code>/404</code>, HEADs, sitemap, robots.txt, assets. Contribuem
+            para o CMS apenas se rodarem <code>getServerSideProps</code> completo — o que
+            o sitemap comprovadamente faz e o 404/HEAD são incertos.
+          </p>
+        </div>
+      </div>
+    </div>
+
     <!-- Section 6: Time consumption by caller (renderer) -->
-    <h2>6. Renderer: tempo por rota</h2>
-    <p>Fonte: New Relic APM — external service callers, total 592k segundos consumidos em I/O externo.</p>
+    <h2>7. Renderer: tempo consumido em I/O externo por rota</h2>
+    <p>
+      Complementando a visão anterior (que mostra <em>quantas</em> requests cada rota recebe),
+      esta seção mostra <em>quanto tempo</em> cada rota gasta esperando I/O externo — ou seja,
+      esperando resposta do S3, do CMS ou do CDN. Rotas que aparecem grandes aqui são as que
+      mais contribuem para custo de banda, latência do SSR e potencialmente para o volume no
+      cms-api.
+    </p>
+    <p style="color: var(--text-dim); font-size: 13px;">
+      Fonte: New Relic APM — external service callers, total 592k segundos consumidos em I/O externo.
+    </p>
 
     <div class="card">
       <div class="card-grid-2">
@@ -892,35 +1114,40 @@
         </div>
       </div>
 
-      <h3 style="margin-top: 24px;">Sinais suspeitos: HEAD e 404</h3>
-      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-top: 12px;">
-        <div class="hypothesis partial" style="align-items: flex-start;">
-          <span class="badge partial">HEAD /</span>
-          <div class="hypothesis-text">
-            <div class="hypothesis-title">3,00% (17,8k s) só na home</div>
-            <div class="hypothesis-evidence">
-              HEAD é método usado por <strong>uptime monitors</strong> (Pingdom, UptimeRobot, StatusCake)
-              e <strong>alguns crawlers</strong> antes de GET.
-              Se o Next não faz short-circuit em HEAD, roda SSR completo pra devolver só headers.
-            </div>
-          </div>
-        </div>
-        <div class="hypothesis partial" style="align-items: flex-start;">
-          <span class="badge partial">GET /404</span>
-          <div class="hypothesis-text">
-            <div class="hypothesis-title">2,52% (14,9k s) em páginas inexistentes</div>
-            <div class="hypothesis-evidence">
-              Assinatura típica de <strong>scanners tentando URLs de exploit</strong>
-              (<code>/wp-admin</code>, <code>/.env</code>) ou <strong>crawlers com cache de URLs velhas</strong>.
-              Verificar se rota 404 faz curto-circuito antes do fetch.
-            </div>
-          </div>
-        </div>
-      </div>
+      <h3 style="margin-top: 24px;">Observação sobre HEAD e 404</h3>
+      <p>
+        Duas rotas chamam atenção pelo tempo consumido em I/O externo:
+      </p>
+      <ul>
+        <li>
+          <strong><code>HEAD /</code> = 3,00% (17,8k s)</strong> — o método HTTP HEAD é usado para
+          verificar se uma URL responde sem baixar o corpo. Se o Next.js rodar <code>getServerSideProps</code>
+          para HEAD (comportamento padrão em muitas versões), o handler faz todas as buscas ao S3 e CMS,
+          mesmo que apenas os headers sejam retornados. Vale verificar no código se há short-circuit.
+        </li>
+        <li>
+          <strong><code>GET /404</code> = 2,52% (14,9k s)</strong> — páginas que não existem também
+          estão consumindo tempo em I/O externo. Isso sugere que a rota <code>_error</code>/<code>404</code>
+          pode estar disparando <code>getServerSideProps</code> antes de decidir que não há página,
+          buscando metadata e outros JSONs no S3 desnecessariamente.
+        </li>
+      </ul>
+      <p style="margin-top: 12px;">
+        Se qualquer uma dessas duas rotas puder retornar mais cedo (antes de fetches externos),
+        o tempo economizado seria significativo — mas precisa ser verificado no código do renderer
+        antes de agir.
+      </p>
     </div>
 
     <!-- Section 7: Fan-out -->
-    <h2>7. Fan-out: queries OS por HTTP request</h2>
+    <h2>8. Fan-out: quantas queries no OpenSearch cada HTTP request gera</h2>
+    <p>
+      Chegou a parte central do diagnóstico. "Fan-out" é a razão entre quantas queries um
+      request HTTP gera no backend — no nosso caso, quantas queries OpenSearch cada request
+      HTTP no cms-api dispara. Se cada request gera N queries e o volume HTTP é X, o volume
+      OpenSearch é <strong>N × X</strong>. Isso permite entender se o problema é de volume
+      de requests (muitos clientes) ou de amplificação por request (uma request gera muitas queries).
+    </p>
 
     <div class="fanout">
       <div class="fanout-box request">
@@ -988,7 +1215,13 @@
     </div>
 
     <!-- Section 8: Hypotheses -->
-    <h2>8. Estado final das hipóteses</h2>
+    <h2>9. Estado final das hipóteses da investigação inicial</h2>
+    <p>
+      O card original da spike listava várias hipóteses candidatas para o volume. Com os dados
+      coletados, cada uma pôde ser <strong>confirmada</strong>, <strong>parcialmente confirmada</strong>
+      ou <strong>descartada</strong>. Manter essa lista visível ajuda quem for revisar o processo
+      a entender o que foi testado e o que ficou de fora.
+    </p>
     <div class="card">
       <div class="hypothesis confirmed">
         <span class="badge confirmed">confirmada</span>
@@ -1048,8 +1281,182 @@
       </div>
     </div>
 
-    <!-- Section 9: Quick win -->
-    <h2>9. Quick win: cache in-memory de <code>getContentTypeById</code></h2>
+    <!-- Section 10: Investigações abertas -->
+    <h2>10. Aprofundamento em dois pontos abertos</h2>
+    <p>
+      Dois pontos ficaram sem explicação clara depois da primeira passada. Ambos foram
+      investigados diretamente no código-fonte (via grep e leitura das rotas). Um deles
+      ficou com hipótese refinada mas ainda sem prova; o outro ficou mapeado no
+      comportamento mas com contribuição incerta ao volume final. É importante manter
+      esses pontos visíveis para que decisões futuras não os ignorem.
+    </p>
+
+    <div class="card">
+      <h3>Investigação 1 — Discrepância no <code>/entries/:slug</code></h3>
+      <p style="color: var(--text-dim); font-size: 13px;">
+        Renderer <code>/[slug]/[item]</code> = 58,8 rpm · CMS <code>/entries/:slug</code> = 72,2 rpm ·
+        <strong>+13,4 rpm inexplicados (+23%)</strong>
+      </p>
+
+      <h4 style="margin-top: 16px; color: #fff;">O que o grep confirmou</h4>
+      <ul>
+        <li>Único caller de <code>fetchCMS()</code> em produção: <code>pages/[slug]/[item].tsx:157</code></li>
+        <li>Chamado exatamente <strong>1× por pageview</strong>, dentro de um <code>Promise.all</code></li>
+        <li>Nenhum loop sobre relações, nenhum bloco dinâmico chama <code>fetchCMS()</code>, nenhuma API route chama
+        </li>
+        <li>Único outro hit é em <code>packages/blocks/src/utils/cms.test.ts</code> (testes)</li>
+      </ul>
+
+      <div class="callout warning" style="margin-top: 16px;">
+        <div class="callout-title">⚠ Falso positivo descartado</div>
+        <p style="font-size: 14px;">
+          A tentação foi atribuir os +13 rpm ao fato de <code>getPublicEntry</code> no cms-api fazer
+          <strong>2-4 sub-queries internas</strong> (2× <code>getContentEntryBySlug</code> se tem
+          <code>siteStatusFilter</code>,
+          + <code>resolveRelationLookup</code>, + <code>buildSiteStatusContext</code>).
+          <strong>Isso não explica</strong> — sub-queries dentro de um handler HTTP inflam
+          span rpm (OS/Prisma), não a transaction rpm do endpoint. NR conta HTTP requests recebidos,
+          não spans internos.
+        </p>
+      </div>
+
+      <h4 style="margin-top: 16px; color: #fff;">Candidatos remanescentes (sem evidência forte)</h4>
+      <ul>
+        <li><strong>Sampling variance do NR</strong> — 23% em rpm dessa ordem pode estar no ruído do agente</li>
+        <li><strong>Retries HTTP</strong> em erros de rede ou 5xx — 1 request no renderer vira 2 no cms-api</li>
+        <li><strong>Janelas de 24h desalinhadas</strong> entre os prints (foram tirados em momentos diferentes)</li>
+        <li><strong>HEAD <code>/[slug]/[item]</code></strong> (~0,91 rpm no top 20) — insuficiente pra 13 rpm</li>
+        <li><strong>Fetch nativo escapando da instrumentação NR</strong> em algum lugar</li>
+        <li><strong>Alguma rota fora do top 20</strong> chamando <code>fetchCMS</code> (não visível)</li>
+      </ul>
+
+      <p style="margin-top: 12px;">
+        <strong>Status:</strong> <span class="badge partial">inconclusivo</span>
+        Para resolver de vez, precisa instrumentar o cms-api com um header ou query param
+        indicando a rota do renderer, ou fazer per-request join entre logs dos dois APM.
+      </p>
+    </div>
+
+    <div class="card">
+      <h3>Investigação 2 — Contribuição do sitemap</h3>
+      <p style="color: var(--text-dim); font-size: 13px;">
+        Renderer <code>/sitemap.xml</code> = 1,73 rpm · <code>/api/sitemap/[name]</code> = 1,71 rpm ·
+        <strong>Total: 3,44 rpm</strong>
+      </p>
+
+      <h4 style="margin-top: 16px; color: #fff;">Como funciona</h4>
+      <ul>
+        <li><strong>Gerado on-demand</strong> — <code>pages/sitemap.xml.tsx</code> não é pré-gerado nem cacheado em
+          servidor</li>
+        <li><strong>Cache-Control <code>max-age=300, s-maxage=300, stale-while-revalidate=600</code></strong>
+          — CDN absorve 5min de tráfego</li>
+        <li>Ambas as rotas (<code>/sitemap.xml</code> e <code>/api/sitemap/[name]</code>) chamam
+          <code>collectSitemapUrls(host)</code> <strong>completo</strong> — não compartilham dado in-process
+        </li>
+        <li><code>fetchAllEntries</code> pagina em loop com <code>per_page: 100</code></li>
+      </ul>
+
+      <h4 style="margin-top: 16px; color: #fff;">Fan-out por request de sitemap</h4>
+      <p>
+        <strong>Σ ceil(M_i / 100)</strong> chamadas ao <code>/entries</code>, onde M_i = entries por coleção
+        no manifest, e i = 1..N (número de coleções). Varia muito por tamanho de site.
+      </p>
+
+      <table>
+        <thead>
+          <tr>
+            <th>Perfil</th>
+            <th class="num">Coleções</th>
+            <th class="num">Entries totais</th>
+            <th class="num">Chamadas /entries</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>Pequeno</td>
+            <td class="num">1</td>
+            <td class="num">500</td>
+            <td class="num">5</td>
+          </tr>
+          <tr>
+            <td>Médio</td>
+            <td class="num">3</td>
+            <td class="num">5.000</td>
+            <td class="num">50</td>
+          </tr>
+          <tr>
+            <td>Grande</td>
+            <td class="num">5</td>
+            <td class="num">50.000</td>
+            <td class="num">500</td>
+          </tr>
+          <tr>
+            <td>Muito grande</td>
+            <td class="num">8</td>
+            <td class="num">200.000</td>
+            <td class="num">2.000</td>
+          </tr>
+        </tbody>
+      </table>
+
+      <h4 style="margin-top: 16px; color: #fff;">Contribuição estimada ao CMS</h4>
+      <p>
+        3,44 rpm de sitemap × fan-out por request × (chama <code>collectSitemapUrls</code> 2× — uma por rota):
+      </p>
+      <table>
+        <thead>
+          <tr>
+            <th>Perfil</th>
+            <th class="num">Contribuição em rpm de /entries</th>
+            <th class="num">% dos 388 rpm observados</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>Pequeno</td>
+            <td class="num">~35</td>
+            <td class="num">9%</td>
+          </tr>
+          <tr>
+            <td>Médio</td>
+            <td class="num">~340</td>
+            <td class="num">88%</td>
+          </tr>
+          <tr>
+            <td>Grande</td>
+            <td class="num">~3.400</td>
+            <td class="num">876% ⚠</td>
+          </tr>
+        </tbody>
+      </table>
+
+      <div class="callout warning" style="margin-top: 16px;">
+        <div class="callout-title">⚠ Range de incerteza gigante</div>
+        <p style="font-size: 14px;">
+          Sitemap pode contribuir com <strong>de 3% a 90%+ do volume de <code>/entries</code></strong>,
+          dependendo do tamanho das coleções. Não dá pra cravar sem medir. Se as coleções são "médias"
+          (~5K entries × 3 coleções), sitemap já é candidato a driver principal do CMS —
+          mais do que os próprios pageviews.
+        </p>
+      </div>
+
+      <p style="margin-top: 12px;">
+        <strong>Status:</strong> <span class="badge partial">precisa medição</span>
+        Instrumentar tempo médio de resposta do sitemap OU adicionar log de "quantas páginas paginou" resolve.
+        Ação óbvia: <strong>Redis cache do resultado do <code>collectSitemapUrls</code></strong> (TTL 5-10min).
+        Já tem o Cache-Control do lado HTTP; falta o cache in-process.
+      </p>
+    </div>
+
+    <!-- Section 11: Quick win -->
+    <h2>11. Quick win: cache in-memory do <code>getContentTypeById</code></h2>
+    <p>
+      Como o diagnóstico mostrou que o lookup de content type é responsável por praticamente
+      metade das queries do OpenSearch, a otimização mais direta é evitar essa query quando
+      ela é redundante. Content types mudam raramente (só quando alguém edita a estrutura
+      de dados no builder), então guardar o resultado em memória por alguns minutos é
+      seguro e resolve a maior parte do problema com uma mudança pequena.
+    </p>
 
     <div class="card">
       <h3>Impacto quantificado</h3>
@@ -1105,130 +1512,214 @@
       </p>
     </div>
 
-    <!-- Section 10: Anomalies -->
-    <h2>10. Anomalias e follow-ups fora do escopo</h2>
+    <!-- Section 12: Anomalies -->
+    <h2>12. Pontos observados fora do escopo direto</h2>
+    <p>
+      Ao longo da investigação apareceram sinais que <strong>não afetam diretamente o volume de requests
+        no OpenSearch</strong>, mas merecem ser registrados para tratamento posterior. Cada um vale um
+      card separado.
+    </p>
     <div class="callout warning">
-      <div class="callout-title">Investigações abertas</div>
+      <div class="callout-title">Lista para follow-up</div>
       <ul style="margin-top: 8px;">
-        <li><strong>Origem do tráfego no renderer (bloqueada)</strong> — NR não captura <code>User-Agent</code> por
-          default no agente Node. Habilitar <code>attributes.include: ['request.headers.userAgent']</code> em
-          <code>apps/renderer/newrelic.js</code> ou usar <code>newrelic.addCustomAttribute</code> no
-          <code>getServerSideProps</code>. Alternativa: ALB access logs (se habilitados).</li>
-        <li><strong><code>HEAD /</code> = 3% do tempo</strong> — provável uptime monitor. Verificar quem bate e se Next
-          roda SSR pra retornar só headers.</li>
-        <li><strong><code>GET /404</code> = 2,52% do tempo</strong> — verificar se rota 404 dispara fetches ao S3/CMS
-          antes de decidir que é 404. Se sim, esforço grátis pra evitar.</li>
-        <li><strong>Highest error rate: 100%</strong> — algum endpoint falha 100% no período; descobrir qual</li>
-        <li><strong>Slowest avg response: 5,8s</strong> — SSR trava em 5,8s no pior caso, provavelmente
-          <code>/entries/:slug</code> com relações pesadas</li>
-        <li><strong>Apdex 71,69% dissatisfying</strong> — reflexo do item anterior no experience real</li>
-        <li><strong><code>msearch.create</code> (1,31%)</strong> — o que é? Otimização legítima ou padrão a substituir?
+        <li>
+          <strong>Alguma transação com error rate de 100%</strong> — o overview do New Relic mostra
+          um endpoint falhando em todas as requisições no período. Não sabemos qual — precisa filtrar
+          no APM por transaction name para identificar.
         </li>
-        <li><strong>Connection pool / keep-alive OS</strong> — 108ms de overhead sugere conexão não reusada; ver
-          <code>openSearchConfig.ts</code></li>
+        <li>
+          <strong>Resposta mais lenta observada: 5,8 s</strong> — no pior caso, o SSR do renderer
+          demora quase 6 segundos. Provavelmente ocorre em <code>/[slug]/[item]</code> quando o
+          content type tem muitas relações a resolver, cada uma com seu próprio custo.
+        </li>
+        <li>
+          <strong>Apdex de 71,69%</strong> — o índice de satisfação do usuário está em zona
+          "dissatisfying" no New Relic. É consequência direta da latência alta descrita acima.
+        </li>
+        <li>
+          <strong>Overhead de ~108 ms por query no cliente OpenSearch</strong> — o Bonsai processa
+          cada query em 2-6 ms, mas o New Relic mede 110 ms de média. A diferença é rede + TLS +
+          pool de conexões. Vale verificar em <code>openSearchConfig.ts</code> se o pool está
+          configurado para reuso (keep-alive).
+        </li>
+        <li>
+          <strong><code>HEAD /</code> e <code>GET /404</code> consomem tempo de I/O externo</strong>
+          — como mostrado na seção 7, essas rotas gastam ~5,5% do tempo do renderer em fetches ao S3
+          e CMS. Verificar se é possível short-circuitar essas rotas antes de <code>getServerSideProps</code>.
+        </li>
+        <li>
+          <strong><code>msearch.create</code></strong> (1,31% do tempo total) — operação do OpenSearch
+          que faz múltiplas buscas em uma request. Vale confirmar se é uma otimização intencional
+          (agrupamento de queries) ou padrão herdado que pode ser substituído.
+        </li>
       </ul>
     </div>
 
-    <!-- Section 11: Actions -->
-    <h2>11. Ações priorizadas</h2>
+    <!-- Section 13: Actions -->
+    <h2>13. Ações priorizadas</h2>
+    <p>
+      A ordem abaixo reflete <strong>impacto × esforço × confiança no dado</strong>.
+      As ações P1 se baseiam em medição direta e têm baixo risco de execução.
+      P2 depende de medição adicional para calibrar impacto real.
+      P3 são melhorias que não afetam o problema principal, mas foram observadas no caminho.
+    </p>
     <ul class="action-list">
       <li class="action p1">
         <span class="action-priority">P1</span>
         <div>
-          <div class="action-title">Cache in-memory de <code>getContentTypeById</code></div>
+          <div class="action-title">Cache in-memory do <code>getContentTypeById</code></div>
           <div class="action-desc">
-            TTL 5-10min + invalidação por mutação de ContentType/Field. Biblioteca: <code>lru-cache</code> (~20 linhas).
-            Hit rate esperado >99% (content types são editados raríssimo).
+            O maior consumidor do OpenSearch é o lookup de tipo de conteúdo, chamado 1× por request
+            público. Como o tipo de conteúdo raramente muda, cachear em memória com TTL de 5-10 minutos
+            (mais invalidação por evento em mutações de <code>ContentType</code>/<code>Field</code>)
+            resolve. Implementação sugerida: biblioteca <code>lru-cache</code>, ~20 linhas no service.
           </div>
-          <span class="action-impact">Impacto: -48% no Bonsai · Esforço: baixo</span>
-        </div>
-      </li>
-      <li class="action p1">
-        <span class="action-priority">P1</span>
-        <div>
-          <div class="action-title">Habilitar captura de <code>User-Agent</code> no NR do renderer</div>
-          <div class="action-desc">
-            Sem isso, a origem dos ~865K pageviews/dia fica cega. Adicionar
-            <code>attributes.include: ['request.headers.userAgent', 'request.headers.host']</code>
-            em <code>apps/renderer/newrelic.js</code>. Deploy leve, sem código.
-          </div>
-          <span class="action-impact">Impacto: desbloqueia investigação da causa raiz do volume · Esforço: mínimo</span>
+          <span class="action-impact">Impacto: -48% no Bonsai · Esforço: baixo · Confiança: alta</span>
         </div>
       </li>
       <li class="action p2">
         <span class="action-priority">P2</span>
         <div>
-          <div class="action-title">Cache HTTP + CDN para <code>/available-filters</code></div>
+          <div class="action-title">Instrumentar cms-api para atribuir requests à rota do renderer</div>
           <div class="action-desc">
-            Filtros mudam pouco; hit rate alto esperado.
+            Adicionar um header custom (<code>X-Renderer-Route</code>) ou query param nas chamadas do
+            renderer ao cms-api. Assim, o New Relic do cms-api consegue mostrar quantos requests em
+            <code>/entries</code> vieram de <code>/[slug]</code> vs. <code>/sitemap.xml</code> etc.
+            Isso resolve a discrepância inexplicada em <code>/entries/:slug</code> (+13 rpm)
+            e mede a contribuição real do sitemap.
           </div>
-          <span class="action-impact">Impacto: -9 a -13% adicionais · Esforço: baixo</span>
+          <span class="action-impact">Impacto: desbloqueia decisões seguintes · Esforço: baixo</span>
         </div>
       </li>
       <li class="action p2">
         <span class="action-priority">P2</span>
         <div>
-          <div class="action-title"><code>Cache-Control</code> público em <code>/entries</code> + CDN</div>
+          <div class="action-title">Cache do resultado de <code>collectSitemapUrls</code> em Redis</div>
           <div class="action-desc">
-            TTL curto (30-60s) + CDN na frente absorve bots e re-visitas próximas.
+            O sitemap é gerado on-demand a cada request, e cada request pode disparar de 5 a 2000
+            chamadas ao <code>/entries</code> (depende do tamanho das coleções). Já existe
+            <code>Cache-Control</code> HTTP de 5min, mas as duas rotas (<code>/sitemap.xml</code>
+            e <code>/api/sitemap/[name]</code>) reconstroem tudo separadamente. Cache in-process
+            (Redis, TTL 5-10min) elimina reconstrução duplicada.
           </div>
-          <span class="action-impact">Impacto potencial: -20 a -30% adicionais · Esforço: baixo</span>
+          <span class="action-impact">Impacto: depende do tamanho das coleções · Esforço: baixo</span>
         </div>
       </li>
       <li class="action p2">
         <span class="action-priority">P2</span>
         <div>
-          <div class="action-title">CDN + <code>Cache-Control</code> no renderer</div>
+          <div class="action-title">Cache HTTP para <code>/available-filters</code> do cms-api</div>
           <div class="action-desc">
-            Se confirmado que 865K pageviews/dia vem majoritariamente de bots/crawlers, um CDN na frente
-            do renderer com TTL curto (mesmo 30s) reduz muito a carga tanto do renderer quanto do CMS.
-            Depende de definir User-Agents que podem cachear e ver conteúdo estático.
+            Os filtros disponíveis por content type mudam quando entries são criados/editados,
+            mas isso é infrequente durante uma sessão de navegação. Um <code>Cache-Control</code>
+            com TTL curto (30-60s) permite CDN absorver a maior parte dos hits.
           </div>
-          <span class="action-impact">Impacto potencial: -50% ou mais · Esforço: médio</span>
+          <span class="action-impact">Impacto: -9 a -13% adicionais no Bonsai · Esforço: baixo</span>
         </div>
       </li>
       <li class="action p3">
         <span class="action-priority">P3</span>
         <div>
-          <div class="action-title">Short-circuit em <code>HEAD /</code> e <code>GET /404</code></div>
+          <div class="action-title">Verificar short-circuit em <code>HEAD</code> e <code>404</code> do renderer</div>
           <div class="action-desc">
-            Verificar se essas rotas ainda fazem fetches externos. Se sim, curto-circuito bare-metal
-            antes do <code>getServerSideProps</code> economiza ~5,5% do tempo de I/O do renderer.
+            Confirmar se essas rotas rodam <code>getServerSideProps</code> completo. Se sim,
+            retornar mais cedo economiza fetches ao S3 e CMS. Não afeta o problema principal
+            do OpenSearch de forma significativa, mas melhora latência e reduz custo de S3.
           </div>
+          <span class="action-impact">Impacto: melhora tempo de I/O do renderer em ~5% · Esforço: baixo</span>
         </div>
       </li>
       <li class="action p3">
         <span class="action-priority">P3</span>
         <div>
-          <div class="action-title">Investigar anomalias fora do escopo</div>
+          <div class="action-title">Investigar itens fora do escopo</div>
           <div class="action-desc">
-            Transação com 100% error rate, SSR lento de 5,8s, keep-alive do cliente OS.
+            Transação com error rate 100%, SSR mais lento de 5,8s, overhead de 108 ms por query
+            no cliente OpenSearch. Cada um vale um card separado.
           </div>
         </div>
       </li>
     </ul>
 
-    <!-- Section 12: Conclusion -->
-    <h2>12. Conclusão</h2>
+    <!-- Section 14: Conclusion -->
+    <h2>14. Conclusão</h2>
+
     <div class="callout">
+      <div class="callout-title">O que foi possível concluir com solidez</div>
       <p>
-        O volume de 1,6M requests/dia ao Bonsai <strong>não é um mistério</strong>: é o resultado direto de
-        <strong>~740K requests HTTP ao cms-api</strong>, com fan-out 2:1 confirmado.
-        <strong>Metade dessas queries é evitável trivialmente</strong> com cache in-memory do lookup de content type.
+        A causa principal do volume no OpenSearch foi identificada: <strong>cada request público
+          do cms-api gera 2 queries no cluster</strong>, uma delas repetitiva e evitável.
+        A busca em <code>cms_content_types_v2</code> (o lookup de tipo de conteúdo) responde por
+        quase metade do tráfego total do Bonsai e pode ser cortada com cache em memória — sem
+        mudança arquitetural, sem risco relevante.
       </p>
       <p style="margin-top: 12px;">
-        <strong>Porém, apareceu um segundo problema:</strong> o renderer processa
-        <strong>~865K pageviews/dia</strong> — número que não bate com o volume esperado de clientes.
-        Antes de assumir que é tráfego legítimo, precisa validar via User-Agent (bloqueado hoje por config default do
-        NR).
-        Se boa parte for bot/crawler, o real ganho não é otimizar OS — é <strong>colocar CDN na frente do
-          renderer</strong>.
+        Essa conclusão vem de medição direta: o New Relic mostra que os dois índices consomem
+        volumes praticamente iguais (534 vs 501 calls/min, ratio 1,07:1), o que só se explica se
+        cada request gerar exatamente uma query em cada índice. É a assinatura clássica de N+1.
       </p>
-      <p style="margin-top: 12px;">
-        A spike do OS está <strong>concluída</strong>: caminho claro para -48% no Bonsai com uma mudança de baixo
-        esforço.
-        Uma <strong>investigação nova está aberta</strong>: descobrir de onde vêm os pageviews.
+    </div>
+
+    <div class="callout warning">
+      <div class="callout-title">O que ficou como hipótese, não como fato</div>
+      <p>
+        Alguns pontos foram tratados no documento com forte indício mas <strong>sem medição
+          direta que os confirme</strong>. Vale registrar para não passarem despercebidos:
       </p>
+      <ul style="margin-top: 8px;">
+        <li>
+          <strong>O renderer é a fonte exclusiva do cms-api público?</strong> Muito provável
+          (o renderer envia 511 rpm ao hostname do CMS e o cms-api recebe 514 rpm nos endpoints
+          públicos). Mas as duas medições cobrem escopos diferentes (todos os paths vs. só 3 endpoints),
+          então a coincidência é forte indício, não prova.
+        </li>
+        <li>
+          <strong>Quanto cada pageview gera de chamadas ao CMS?</strong> A média de 1,47 chamadas
+          por pageview de conteúdo é derivada por divisão simples (514 ÷ 349,6). Não é uma medida
+          per-route; várias combinações de "% de páginas com blocos dinâmicos × avg de blocos"
+          produzem esse mesmo total.
+        </li>
+        <li>
+          <strong>A discrepância de +13,4 rpm em <code>/entries/:slug</code></strong> continua
+          sem explicação medida. O único caller de <code>fetchCMS</code> encontrado no código é
+          <code>[slug]/[item].tsx:157</code>, chamado 1× por pageview. Candidatos remanescentes:
+          sampling do New Relic, retries HTTP, janelas de 24h desalinhadas entre os prints,
+          ou HEAD executando <code>getServerSideProps</code>.
+        </li>
+        <li>
+          <strong>A contribuição do sitemap ao CMS</strong> depende do tamanho das coleções em
+          cada site: pode variar entre 3% e 90%+ do endpoint <code>/entries</code>. Sem medir por
+          conta, é impossível cravar.
+        </li>
+      </ul>
+    </div>
+
+    <div class="callout">
+      <div class="callout-title">Recomendação de próximos passos</div>
+      <ol style="margin: 8px 0 0 20px;">
+        <li>
+          <strong>Implementar o cache do <code>getContentTypeById</code></strong> — resolve
+          praticamente metade do problema, funciona independentemente de qualquer outra ação.
+        </li>
+        <li>
+          <strong>Instrumentar o cms-api para atribuir cada request à rota do renderer</strong>
+          (via header ou query param). Sem isso, as demais decisões continuam sendo por
+          aproximação. Com isso, dá para medir sitemap, discrepância do <code>/entries/:slug</code>,
+          e distribuição por rota diretamente.
+        </li>
+        <li>
+          <strong>Cachear o resultado do <code>collectSitemapUrls</code> em Redis</strong> —
+          elimina reconstrução duplicada entre <code>/sitemap.xml</code> e <code>/api/sitemap/[name]</code>.
+        </li>
+        <li>
+          <strong>Adicionar cache HTTP para <code>/available-filters</code></strong> — o endpoint
+          muda pouco em janelas curtas e é candidato natural a CDN cache.
+        </li>
+        <li>
+          <strong>Investigar os pontos da seção 12</strong> como cards separados, sem misturar
+          com o problema principal.
+        </li>
+      </ol>
     </div>
 
     <div class="footer">
@@ -1352,6 +1843,65 @@
         scales: {
           x: { grid: { color: '#2c3540' }, ticks: { color: '#a0a8b0' } },
           y: { grid: { display: false }, ticks: { color: '#e6e6e6', font: { size: 13 } } }
+        }
+      }
+    });
+
+    // Chart NEW: Renderer transactions by rpm
+    new Chart(document.getElementById('chartRendererTransactions'), {
+      type: 'bar',
+      data: {
+        labels: [
+          'GET /[slug]',
+          'GET /404',
+          'GET /',
+          'GET /[slug]/[item]',
+          'HEAD /',
+          '* (misc)',
+          'GET /robots.txt',
+          '*.ico',
+          'HEAD /404',
+          'GET /sitemap.xml',
+          'GET /api/sitemap/[name]',
+          'GET /_error',
+          'POST /404',
+          '*.js',
+          'HEAD /[slug]',
+        ],
+        datasets: [{
+          label: 'rpm',
+          data: [221, 172, 69.8, 58.8, 18.6, 9.59, 5.43, 4.18, 1.9, 1.73, 1.71, 1.61, 1.49, 1.07, 0.91],
+          backgroundColor: [
+            palette.primary,   // /[slug] - rota de conteúdo
+            palette.dim,       // /404
+            palette.primary,   // / - rota de conteúdo
+            palette.primary,   // /[slug]/[item] - rota de conteúdo
+            palette.dim,
+            palette.dim,
+            palette.dim,
+            palette.dim,
+            palette.dim,
+            palette.secondary, // sitemap - contribui ao CMS
+            palette.secondary, // sitemap - contribui ao CMS
+            palette.dim,
+            palette.dim,
+            palette.dim,
+            palette.dim,
+          ],
+          borderRadius: 4,
+        }]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        indexAxis: 'y',
+        plugins: {
+          legend: { display: false },
+          tooltip: { callbacks: { label: (ctx) => `${ctx.raw} rpm` } }
+        },
+        scales: {
+          x: { grid: { color: '#2c3540' }, ticks: { color: '#a0a8b0' } },
+          y: { grid: { display: false }, ticks: { color: '#e6e6e6', font: { size: 10 } } }
         }
       }
     });
