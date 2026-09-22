@@ -1,0 +1,1175 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+
+<head>
+  <meta charset="UTF-8">
+  <title>Diagnóstico: volume de requests ao OpenSearch (Bonsai)</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+  <style>
+    :root {
+      --bg: #0f1419;
+      --bg-card: #1a2028;
+      --bg-hover: #242b34;
+      --border: #2c3540;
+      --text: #e6e6e6;
+      --text-dim: #a0a8b0;
+      --accent: #4ade80;
+      --accent-2: #38bdf8;
+      --danger: #f87171;
+      --warning: #fbbf24;
+      --success: #4ade80;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.6;
+      padding: 40px 20px;
+    }
+
+    .container {
+      max-width: 1200px;
+      margin: 0 auto;
+    }
+
+    h1 {
+      font-size: 32px;
+      margin-bottom: 8px;
+      color: #fff;
+    }
+
+    .subtitle {
+      color: var(--text-dim);
+      font-size: 14px;
+      margin-bottom: 40px;
+      padding-bottom: 20px;
+      border-bottom: 1px solid var(--border);
+    }
+
+    h2 {
+      font-size: 22px;
+      margin: 40px 0 20px;
+      color: #fff;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    h2::before {
+      content: '';
+      display: inline-block;
+      width: 4px;
+      height: 20px;
+      background: var(--accent);
+      border-radius: 2px;
+    }
+
+    h3 {
+      font-size: 18px;
+      margin: 20px 0 12px;
+      color: #fff;
+    }
+
+    p {
+      margin-bottom: 12px;
+      color: var(--text);
+    }
+
+    code {
+      background: var(--bg-card);
+      padding: 2px 6px;
+      border-radius: 4px;
+      font-family: 'JetBrains Mono', Consolas, monospace;
+      font-size: 13px;
+      color: var(--accent-2);
+    }
+
+    /* KPI cards */
+    .kpi-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 16px;
+      margin-bottom: 24px;
+    }
+
+    .kpi {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 20px;
+    }
+
+    .kpi-label {
+      font-size: 12px;
+      color: var(--text-dim);
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      margin-bottom: 8px;
+    }
+
+    .kpi-value {
+      font-size: 32px;
+      font-weight: 700;
+      color: #fff;
+      line-height: 1.1;
+    }
+
+    .kpi-sub {
+      font-size: 13px;
+      color: var(--text-dim);
+      margin-top: 4px;
+    }
+
+    .kpi-value.danger {
+      color: var(--danger);
+    }
+
+    .kpi-value.warning {
+      color: var(--warning);
+    }
+
+    .kpi-value.success {
+      color: var(--success);
+    }
+
+    /* Cards */
+    .card {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 24px;
+      margin-bottom: 20px;
+    }
+
+    .card-grid-2 {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 20px;
+    }
+
+    @media (max-width: 800px) {
+      .card-grid-2 {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    /* Tables */
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 16px 0;
+      font-size: 14px;
+    }
+
+    th {
+      text-align: left;
+      padding: 12px;
+      background: var(--bg-hover);
+      color: var(--text-dim);
+      font-weight: 600;
+      text-transform: uppercase;
+      font-size: 11px;
+      letter-spacing: 0.5px;
+      border-bottom: 1px solid var(--border);
+    }
+
+    td {
+      padding: 12px;
+      border-bottom: 1px solid var(--border);
+    }
+
+    tr:last-child td {
+      border-bottom: none;
+    }
+
+    tr:hover td {
+      background: var(--bg-hover);
+    }
+
+    td.num {
+      text-align: right;
+      font-family: 'JetBrains Mono', monospace;
+    }
+
+    td.highlight {
+      color: var(--accent);
+      font-weight: 600;
+    }
+
+    td.strong {
+      font-weight: 600;
+      color: #fff;
+    }
+
+    .row-total {
+      background: rgba(74, 222, 128, 0.08);
+    }
+
+    .row-total td {
+      font-weight: 700;
+    }
+
+    /* Charts */
+    .chart-wrapper {
+      position: relative;
+      height: 300px;
+      margin: 20px 0;
+    }
+
+    .chart-wrapper.small {
+      height: 250px;
+    }
+
+    /* Hypotheses */
+    .hypothesis {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 12px 16px;
+      background: var(--bg);
+      border-radius: 6px;
+      margin-bottom: 8px;
+      border-left: 3px solid var(--border);
+    }
+
+    .hypothesis.confirmed {
+      border-left-color: var(--success);
+    }
+
+    .hypothesis.partial {
+      border-left-color: var(--warning);
+    }
+
+    .hypothesis.rejected {
+      border-left-color: var(--danger);
+    }
+
+    .badge {
+      padding: 4px 10px;
+      border-radius: 4px;
+      font-size: 11px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      white-space: nowrap;
+    }
+
+    .badge.confirmed {
+      background: rgba(74, 222, 128, 0.15);
+      color: var(--success);
+    }
+
+    .badge.partial {
+      background: rgba(251, 191, 36, 0.15);
+      color: var(--warning);
+    }
+
+    .badge.rejected {
+      background: rgba(248, 113, 113, 0.15);
+      color: var(--danger);
+    }
+
+    .hypothesis-text {
+      flex: 1;
+    }
+
+    .hypothesis-title {
+      font-weight: 600;
+      color: #fff;
+    }
+
+    .hypothesis-evidence {
+      font-size: 13px;
+      color: var(--text-dim);
+      margin-top: 2px;
+    }
+
+    /* Callout */
+    .callout {
+      background: linear-gradient(135deg, rgba(74, 222, 128, 0.1), rgba(56, 189, 248, 0.05));
+      border: 1px solid rgba(74, 222, 128, 0.3);
+      border-radius: 8px;
+      padding: 20px 24px;
+      margin: 20px 0;
+    }
+
+    .callout.warning {
+      background: linear-gradient(135deg, rgba(251, 191, 36, 0.1), rgba(248, 113, 113, 0.05));
+      border-color: rgba(251, 191, 36, 0.3);
+    }
+
+    .callout-title {
+      font-size: 14px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      color: var(--accent);
+      margin-bottom: 8px;
+    }
+
+    .callout.warning .callout-title {
+      color: var(--warning);
+    }
+
+    /* Fan-out diagram */
+    .fanout {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 20px;
+      padding: 30px;
+      background: var(--bg);
+      border-radius: 8px;
+      margin: 20px 0;
+      flex-wrap: wrap;
+    }
+
+    .fanout-box {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 16px 20px;
+      text-align: center;
+      min-width: 160px;
+    }
+
+    .fanout-box.request {
+      border-color: var(--accent-2);
+    }
+
+    .fanout-box.os {
+      border-color: var(--accent);
+    }
+
+    .fanout-value {
+      font-size: 24px;
+      font-weight: 700;
+      color: #fff;
+    }
+
+    .fanout-label {
+      font-size: 12px;
+      color: var(--text-dim);
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      margin-top: 4px;
+    }
+
+    .fanout-arrow {
+      color: var(--text-dim);
+      font-size: 32px;
+    }
+
+    .fanout-ratio {
+      font-size: 42px;
+      font-weight: 700;
+      color: var(--accent);
+      padding: 0 20px;
+    }
+
+    /* Action list */
+    .action-list {
+      list-style: none;
+    }
+
+    .action {
+      display: flex;
+      gap: 16px;
+      padding: 16px;
+      background: var(--bg);
+      border-radius: 6px;
+      margin-bottom: 10px;
+      border-left: 3px solid var(--border);
+    }
+
+    .action.p1 {
+      border-left-color: var(--success);
+    }
+
+    .action.p2 {
+      border-left-color: var(--accent-2);
+    }
+
+    .action.p3 {
+      border-left-color: var(--text-dim);
+    }
+
+    .action-priority {
+      font-size: 11px;
+      font-weight: 700;
+      padding: 3px 8px;
+      border-radius: 4px;
+      height: fit-content;
+      margin-top: 2px;
+    }
+
+    .action.p1 .action-priority {
+      background: rgba(74, 222, 128, 0.15);
+      color: var(--success);
+    }
+
+    .action.p2 .action-priority {
+      background: rgba(56, 189, 248, 0.15);
+      color: var(--accent-2);
+    }
+
+    .action.p3 .action-priority {
+      background: rgba(160, 168, 176, 0.15);
+      color: var(--text-dim);
+    }
+
+    .action-title {
+      font-weight: 600;
+      color: #fff;
+      margin-bottom: 4px;
+    }
+
+    .action-desc {
+      font-size: 13px;
+      color: var(--text-dim);
+    }
+
+    .action-impact {
+      display: inline-block;
+      margin-top: 6px;
+      font-size: 12px;
+      color: var(--success);
+      font-weight: 600;
+    }
+
+    ul {
+      padding-left: 20px;
+      margin-bottom: 12px;
+    }
+
+    li {
+      margin-bottom: 6px;
+      color: var(--text);
+    }
+
+    a {
+      color: var(--accent-2);
+      text-decoration: none;
+    }
+
+    a:hover {
+      text-decoration: underline;
+    }
+
+    .footer {
+      margin-top: 60px;
+      padding-top: 20px;
+      border-top: 1px solid var(--border);
+      color: var(--text-dim);
+      font-size: 13px;
+    }
+  </style>
+</head>
+
+<body>
+  <div class="container">
+
+    <h1>Diagnóstico: volume de requests ao OpenSearch</h1>
+    <p class="subtitle">
+      cms-api · Bonsai (mono-cms-prod) · 24h ending 2026-09-22 16:38 UTC · fontes: Bonsai Dashboard + New Relic APM
+    </p>
+
+    <!-- TL;DR KPIs -->
+    <h2>Resumo executivo</h2>
+    <div class="kpi-grid">
+      <div class="kpi">
+        <div class="kpi-label">Total OS/dia</div>
+        <div class="kpi-value">1,6M</div>
+        <div class="kpi-sub">+9% vs. dia anterior</div>
+      </div>
+      <div class="kpi">
+        <div class="kpi-label">HTTP req públicos/dia</div>
+        <div class="kpi-value">740K</div>
+        <div class="kpi-sub">514 rpm</div>
+      </div>
+      <div class="kpi">
+        <div class="kpi-label">Fan-out OS/HTTP</div>
+        <div class="kpi-value warning">2,01×</div>
+        <div class="kpi-sub">N+1 confirmado</div>
+      </div>
+      <div class="kpi">
+        <div class="kpi-label">Redução possível</div>
+        <div class="kpi-value success">-48%</div>
+        <div class="kpi-sub">com quick win</div>
+      </div>
+    </div>
+
+    <div class="callout">
+      <div class="callout-title">Diagnóstico principal</div>
+      <p>
+        <strong>93% do volume OS vem de 2 operações de search</strong> (<code>cms_content_types_v2</code> +
+        <code>cms_content_entries_v3</code>),
+        geradas por <strong>100% pelos 3 endpoints públicos</strong> chamados pelo renderer no SSR de sites publicados.
+        O fan-out de <strong>2,01 queries OS por HTTP request</strong> é a assinatura de N+1 no lookup
+        <code>getContentTypeById</code>.
+      </p>
+    </div>
+
+    <!-- Section 1: OS Operations breakdown -->
+    <h2>1. Distribuição do tempo em operações de DB</h2>
+    <div class="card">
+      <div class="card-grid-2">
+        <div>
+          <h3>Top 20 database operations</h3>
+          <p style="color: var(--text-dim); font-size: 13px; margin-bottom: 12px;">
+            Fonte: New Relic APM (24h) · % do tempo total consumido
+          </p>
+          <table>
+            <thead>
+              <tr>
+                <th>Operação</th>
+                <th class="num">% tempo</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><code>OpenSearch cms_content_types_v2 search</code></td>
+                <td class="num strong">55,05%</td>
+              </tr>
+              <tr>
+                <td><code>OpenSearch cms_content_entries_v3 search</code></td>
+                <td class="num strong">37,07%</td>
+              </tr>
+              <tr>
+                <td>Redis evalsha</td>
+                <td class="num">6,10%</td>
+              </tr>
+              <tr>
+                <td><code>OpenSearch any msearch.create</code></td>
+                <td class="num">1,31%</td>
+              </tr>
+              <tr>
+                <td>Redis get / setex / multi / exec / outros</td>
+                <td class="num">0,47%</td>
+              </tr>
+              <tr class="row-total">
+                <td>OpenSearch total</td>
+                <td class="num highlight">93,43%</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <div>
+          <div class="chart-wrapper"><canvas id="chartOps"></canvas></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Section 2: Callers per index -->
+    <h2>2. Callers por índice OpenSearch</h2>
+    <p>Ambos os índices são consumidos <strong>100% pelos 3 endpoints públicos</strong>. Endpoints admin não aparecem.
+    </p>
+
+    <div class="card-grid-2">
+      <div class="card">
+        <h3>Callers de <code>cms_content_types_v2</code></h3>
+        <p style="color: var(--text-dim); font-size: 13px;">Tempo total: 84,3 s</p>
+        <div class="chart-wrapper small"><canvas id="chartTypesCallers"></canvas></div>
+        <table>
+          <thead>
+            <tr>
+              <th>Endpoint</th>
+              <th class="num">Tempo</th>
+              <th class="num">%</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><code>GET /entries</code></td>
+              <td class="num">64,35s</td>
+              <td class="num strong">76,31%</td>
+            </tr>
+            <tr>
+              <td><code>GET /available-filters</code></td>
+              <td class="num">11,03s</td>
+              <td class="num">13,08%</td>
+            </tr>
+            <tr>
+              <td><code>GET /entries/:slug</code></td>
+              <td class="num">8,94s</td>
+              <td class="num">10,61%</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="card">
+        <h3>Callers de <code>cms_content_entries_v3</code></h3>
+        <p style="color: var(--text-dim); font-size: 13px;">Tempo total: 56,8 s</p>
+        <div class="chart-wrapper small"><canvas id="chartEntriesCallers"></canvas></div>
+        <table>
+          <thead>
+            <tr>
+              <th>Endpoint</th>
+              <th class="num">Tempo</th>
+              <th class="num">%</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><code>GET /entries</code></td>
+              <td class="num">41,31s</td>
+              <td class="num strong">72,74%</td>
+            </tr>
+            <tr>
+              <td><code>GET /entries/:slug</code></td>
+              <td class="num">10,27s</td>
+              <td class="num">18,08%</td>
+            </tr>
+            <tr>
+              <td><code>GET /available-filters</code></td>
+              <td class="num">5,21s</td>
+              <td class="num">9,18%</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- Section 3: Volume -->
+    <h2>3. Volume por operação (calls per minute)</h2>
+    <div class="card">
+      <table>
+        <thead>
+          <tr>
+            <th>Operação</th>
+            <th class="num">calls/min</th>
+            <th class="num">queries/dia</th>
+            <th class="num">% do total Bonsai</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><code>cms_content_types_v2 search</code></td>
+            <td class="num strong">534</td>
+            <td class="num">~769K</td>
+            <td class="num highlight">~48%</td>
+          </tr>
+          <tr>
+            <td><code>cms_content_entries_v3 search</code></td>
+            <td class="num strong">501</td>
+            <td class="num">~721K</td>
+            <td class="num highlight">~45%</td>
+          </tr>
+          <tr class="row-total">
+            <td>Total OpenSearch search</td>
+            <td class="num">1.035</td>
+            <td class="num">~1,49M</td>
+            <td class="num">~93%</td>
+          </tr>
+        </tbody>
+      </table>
+      <div class="chart-wrapper"><canvas id="chartVolume"></canvas></div>
+    </div>
+
+    <!-- Section 4: HTTP transactions -->
+    <h2>4. Top HTTP transactions (Web)</h2>
+    <div class="card">
+      <table>
+        <thead>
+          <tr>
+            <th>Endpoint</th>
+            <th class="num">rpm</th>
+            <th class="num">req/dia</th>
+            <th>Tipo</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><code>GET /content-entries/public/:accountId/entries</code></td>
+            <td class="num strong">388</td>
+            <td class="num">559K</td>
+            <td><span class="badge confirmed">público</span></td>
+          </tr>
+          <tr>
+            <td><code>GET .../entries/:slug</code></td>
+            <td class="num strong">72,2</td>
+            <td class="num">104K</td>
+            <td><span class="badge confirmed">público</span></td>
+          </tr>
+          <tr>
+            <td><code>GET .../available-filters</code></td>
+            <td class="num strong">54</td>
+            <td class="num">78K</td>
+            <td><span class="badge confirmed">público</span></td>
+          </tr>
+          <tr class="row-total">
+            <td>Total público</td>
+            <td class="num">514,2</td>
+            <td class="num">740K</td>
+            <td></td>
+          </tr>
+          <tr>
+            <td><code>GET /health</code></td>
+            <td class="num">16,1</td>
+            <td class="num">—</td>
+            <td><span class="badge partial">health check</span></td>
+          </tr>
+          <tr>
+            <td><code>OPTIONS /</code></td>
+            <td class="num">15,5</td>
+            <td class="num">—</td>
+            <td><span class="badge partial">CORS preflight</span></td>
+          </tr>
+          <tr>
+            <td><code>GET /content-entries</code></td>
+            <td class="num">7,75</td>
+            <td class="num">—</td>
+            <td><span class="badge rejected">admin</span></td>
+          </tr>
+          <tr>
+            <td><code>GET /content-types/:id</code></td>
+            <td class="num">3,80</td>
+            <td class="num">—</td>
+            <td><span class="badge rejected">admin</span></td>
+          </tr>
+          <tr>
+            <td><code>GET /content-types</code></td>
+            <td class="num">3,02</td>
+            <td class="num">—</td>
+            <td><span class="badge rejected">admin</span></td>
+          </tr>
+        </tbody>
+      </table>
+      <p style="color: var(--text-dim); font-size: 13px; margin-top: 12px;">
+        Admin total ≈ 15 rpm = <strong>2,9% do volume público</strong>. Confirma que builder/admin não contribuem para o
+        problema.
+      </p>
+    </div>
+
+    <!-- Section 5: Fan-out -->
+    <h2>5. Fan-out: queries OS por HTTP request</h2>
+
+    <div class="fanout">
+      <div class="fanout-box request">
+        <div class="fanout-value">514,2</div>
+        <div class="fanout-label">HTTP req/min</div>
+      </div>
+      <div class="fanout-arrow">→</div>
+      <div class="fanout-ratio">2,01×</div>
+      <div class="fanout-arrow">→</div>
+      <div class="fanout-box os">
+        <div class="fanout-value">1.035</div>
+        <div class="fanout-label">Queries OS/min</div>
+      </div>
+    </div>
+
+    <div class="card">
+      <p><strong>Cada request público faz exatamente 2 hits no OpenSearch:</strong></p>
+      <ul>
+        <li><strong>1 query em <code>cms_content_types_v2</code></strong> — <code>getContentTypeById()</code> chamado no
+          início do service</li>
+        <li><strong>1 query em <code>cms_content_entries_v3</code></strong> — o search real dos entries</li>
+      </ul>
+      <p style="margin-top: 12px;">
+        A proporção 534:501 ≈ 1,07:1 entre os dois índices é a smoking gun do N+1.
+        <strong>Não há amplificação escondida.</strong>
+      </p>
+
+      <h3 style="margin-top: 20px;">Validação por endpoint</h3>
+      <table>
+        <thead>
+          <tr>
+            <th>Endpoint</th>
+            <th class="num">rpm HTTP</th>
+            <th class="num">Queries OS esperadas/min</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><code>GET /entries</code></td>
+            <td class="num">388</td>
+            <td class="num">776 (1 types + 1 entries)</td>
+          </tr>
+          <tr>
+            <td><code>GET /entries/:slug</code></td>
+            <td class="num">72,2</td>
+            <td class="num">144+ (+ N relações)</td>
+          </tr>
+          <tr>
+            <td><code>GET /available-filters</code></td>
+            <td class="num">54</td>
+            <td class="num">108 (1 types + 1 aggs)</td>
+          </tr>
+          <tr class="row-total">
+            <td>Esperado</td>
+            <td class="num">514,2</td>
+            <td class="num">~1.028</td>
+          </tr>
+          <tr class="row-total">
+            <td>Observado</td>
+            <td class="num">—</td>
+            <td class="num highlight">1.035 ✓</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <!-- Section 6: Hypotheses -->
+    <h2>6. Estado final das hipóteses</h2>
+    <div class="card">
+      <div class="hypothesis confirmed">
+        <span class="badge confirmed">confirmada</span>
+        <div class="hypothesis-text">
+          <div class="hypothesis-title">H1 — Distribuição concentrada em 1-2 consumidores</div>
+          <div class="hypothesis-evidence">93% em 2 operações OS, 100% em 3 endpoints públicos</div>
+        </div>
+      </div>
+      <div class="hypothesis confirmed">
+        <span class="badge confirmed">confirmada</span>
+        <div class="hypothesis-text">
+          <div class="hypothesis-title">H2 — Leitura pública (renderer) é o driver</div>
+          <div class="hypothesis-evidence">100% do tempo OS em endpoints públicos; admin = 2,9%</div>
+        </div>
+      </div>
+      <div class="hypothesis confirmed">
+        <span class="badge confirmed">confirmada</span>
+        <div class="hypothesis-text">
+          <div class="hypothesis-title">H6 — <code>getContentTypeById</code> é N+1 clássico</div>
+          <div class="hypothesis-evidence">Ratio 2:1 exato entre requests HTTP e queries OS</div>
+        </div>
+      </div>
+      <div class="hypothesis partial">
+        <span class="badge partial">parcial</span>
+        <div class="hypothesis-text">
+          <div class="hypothesis-title">H7 — <code>available-filters</code> paralelo dobra volume</div>
+          <div class="hypothesis-evidence">Contribui 9-13% do tempo; só 10,5% do volume público</div>
+        </div>
+      </div>
+      <div class="hypothesis confirmed">
+        <span class="badge confirmed">contexto</span>
+        <div class="hypothesis-text">
+          <div class="hypothesis-title">H5 — Zero cache amplifica tudo</div>
+          <div class="hypothesis-evidence">Sem cache, H6 se torna problema</div>
+        </div>
+      </div>
+      <div class="hypothesis rejected">
+        <span class="badge rejected">descartada</span>
+        <div class="hypothesis-text">
+          <div class="hypothesis-title">H3 — Reindex em cascata (escrita)</div>
+          <div class="hypothesis-evidence">Nenhuma operação de escrita no top 20</div>
+        </div>
+      </div>
+      <div class="hypothesis rejected">
+        <span class="badge rejected">descartada</span>
+        <div class="hypothesis-text">
+          <div class="hypothesis-title">H4 — Worker em loop</div>
+          <div class="hypothesis-evidence">Idem H3</div>
+        </div>
+      </div>
+      <div class="hypothesis rejected">
+        <span class="badge rejected">descartada</span>
+        <div class="hypothesis-text">
+          <div class="hypothesis-title">H10 — Builder sem debounce</div>
+          <div class="hypothesis-evidence">Endpoints admin = 2,9% do volume</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Section 7: Quick win -->
+    <h2>7. Quick win: cache in-memory de <code>getContentTypeById</code></h2>
+
+    <div class="card">
+      <h3>Impacto quantificado</h3>
+      <div class="chart-wrapper"><canvas id="chartQuickWin"></canvas></div>
+
+      <table style="margin-top: 20px;">
+        <thead>
+          <tr>
+            <th>Métrica</th>
+            <th class="num">Antes</th>
+            <th class="num">Depois</th>
+            <th class="num">Redução</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>Queries OS/min</td>
+            <td class="num">1.035</td>
+            <td class="num">~501</td>
+            <td class="num highlight">-51,6%</td>
+          </tr>
+          <tr>
+            <td>Queries OS/dia</td>
+            <td class="num">1,49M</td>
+            <td class="num">~721K</td>
+            <td class="num highlight">-769K/dia</td>
+          </tr>
+          <tr>
+            <td>Total Bonsai/dia</td>
+            <td class="num">1,6M</td>
+            <td class="num">~830K</td>
+            <td class="num highlight">-48%</td>
+          </tr>
+          <tr>
+            <td>Índice <code>content_types_v2</code></td>
+            <td class="num">534 c/min</td>
+            <td class="num">~0</td>
+            <td class="num highlight">-100%</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="callout">
+      <div class="callout-title">Bônus: latência do próprio cms-api</div>
+      <p>
+        New Relic mostra <strong>110ms de avg</strong> por query em <code>content_types_v2</code>,
+        enquanto o Bonsai reporta <strong>2ms median / 6ms p95</strong> no cluster.
+        Isso significa <strong>~108ms de overhead por query</strong> fora do cluster (rede, TLS, connection pool,
+        serialização).
+        Cache local elimina esse overhead 100% — impacto direto em <strong>latência do SSR do renderer</strong>
+        e no Apdex de 71,69%.
+      </p>
+    </div>
+
+    <!-- Section 8: Anomalies -->
+    <h2>8. Anomalias fora do escopo</h2>
+    <div class="callout warning">
+      <div class="callout-title">Follow-ups para investigar</div>
+      <ul style="margin-top: 8px;">
+        <li><strong>Highest error rate: 100%</strong> — algum endpoint falha 100% no período; descobrir qual</li>
+        <li><strong>Slowest avg response: 5,8s</strong> — SSR trava em 5,8s no pior caso, provavelmente
+          <code>/entries/:slug</code> com relações pesadas</li>
+        <li><strong>Apdex 71,69% dissatisfying</strong> — reflexo do item anterior no experience real</li>
+        <li><strong><code>msearch.create</code> (1,31%)</strong> — o que é? Otimização legítima ou padrão a substituir?
+        </li>
+        <li><strong>Connection pool / keep-alive OS</strong> — 108ms de overhead sugere conexão não reusada; ver
+          <code>openSearchConfig.ts</code></li>
+      </ul>
+    </div>
+
+    <!-- Section 9: Actions -->
+    <h2>9. Ações priorizadas</h2>
+    <ul class="action-list">
+      <li class="action p1">
+        <span class="action-priority">P1</span>
+        <div>
+          <div class="action-title">Cache in-memory de <code>getContentTypeById</code></div>
+          <div class="action-desc">
+            TTL 5-10min + invalidação por mutação de ContentType/Field. Biblioteca: <code>lru-cache</code> (~20 linhas).
+            Hit rate esperado >99% (content types são editados raríssimo).
+          </div>
+          <span class="action-impact">Impacto: -48% no Bonsai · Esforço: baixo</span>
+        </div>
+      </li>
+      <li class="action p2">
+        <span class="action-priority">P2</span>
+        <div>
+          <div class="action-title">Cache HTTP + CDN para <code>/available-filters</code></div>
+          <div class="action-desc">
+            Filtros mudam pouco; hit rate alto esperado.
+          </div>
+          <span class="action-impact">Impacto: -9 a -13% adicionais · Esforço: baixo</span>
+        </div>
+      </li>
+      <li class="action p2">
+        <span class="action-priority">P2</span>
+        <div>
+          <div class="action-title"><code>Cache-Control</code> público em <code>/entries</code> + CDN</div>
+          <div class="action-desc">
+            TTL curto (30-60s) + CDN na frente absorve bots e re-visitas próximas.
+          </div>
+          <span class="action-impact">Impacto potencial: -20 a -30% adicionais · Esforço: baixo</span>
+        </div>
+      </li>
+      <li class="action p3">
+        <span class="action-priority">P3</span>
+        <div>
+          <div class="action-title">Investigar anomalias fora do escopo</div>
+          <div class="action-desc">
+            Transação com 100% error rate, SSR lento de 5,8s, keep-alive do cliente OS.
+          </div>
+        </div>
+      </li>
+    </ul>
+
+    <!-- Section 10: Conclusion -->
+    <h2>10. Conclusão</h2>
+    <div class="callout">
+      <p>
+        O volume de 1,6M requests/dia ao Bonsai <strong>não é um mistério</strong>: é o resultado direto de
+        <strong>~740K pageviews de sites publicados</strong>, cada uma disparando 2 queries OS via
+        <code>getServerSideProps</code> do renderer.
+        <strong>Metade dessas queries é evitável trivialmente</strong> com cache in-memory do lookup de content type.
+      </p>
+      <p style="margin-top: 12px;">
+        A spike de investigação está <strong>concluída</strong>. O caminho está claro para reduzir o Bonsai
+        em quase metade com uma única mudança de baixo esforço.
+      </p>
+    </div>
+
+    <div class="footer">
+      <p><strong>Referências:</strong></p>
+      <ul style="margin-top: 8px;">
+        <li><a href="./renderer-cms-requests.md">docs/renderer-cms-requests.md</a> — fluxo de requests do renderer →
+          cms-api</li>
+        <li><a href="./card-investigacao-volume-opensearch.md">docs/card-investigacao-volume-opensearch.md</a> — card da
+          spike</li>
+        <li><a href="./diagnostico-volume-opensearch.md">docs/diagnostico-volume-opensearch.md</a> — versão markdown
+          deste documento</li>
+        <li><code>apps/cms-api/src/modules/contentEntry/contentEntry.service.ts:2710</code> — service do
+          <code>listPublicEntries</code></li>
+        <li><code>apps/cms-api/src/modules/contentEntry/publicContentEntry.router.ts:20</code> — router público</li>
+        <li><code>packages/blocks/src/utils/cms.ts:502</code> — orquestrador <code>fetchAllDynamicContents</code></li>
+      </ul>
+    </div>
+
+  </div>
+
+  <script>
+    Chart.defaults.color = '#a0a8b0';
+    Chart.defaults.borderColor = '#2c3540';
+    Chart.defaults.font.family = "'-apple-system', 'BlinkMacSystemFont', 'Segoe UI', 'Roboto', sans-serif";
+
+    const palette = {
+      primary: '#4ade80',
+      secondary: '#38bdf8',
+      tertiary: '#a78bfa',
+      warning: '#fbbf24',
+      danger: '#f87171',
+      dim: '#64748b',
+    };
+
+    // Chart 1: Top DB operations
+    new Chart(document.getElementById('chartOps'), {
+      type: 'doughnut',
+      data: {
+        labels: ['content_types_v2 search', 'content_entries_v3 search', 'Redis evalsha', 'msearch.create', 'Outros Redis'],
+        datasets: [{
+          data: [55.05, 37.07, 6.10, 1.31, 0.47],
+          backgroundColor: [palette.primary, palette.secondary, palette.warning, palette.tertiary, palette.dim],
+          borderColor: '#0f1419',
+          borderWidth: 2,
+        }]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+          legend: { position: 'bottom', labels: { padding: 12, font: { size: 12 } } },
+          tooltip: { callbacks: { label: (ctx) => `${ctx.label}: ${ctx.raw}%` } }
+        }
+      }
+    });
+
+    // Chart 2: Callers of content_types_v2
+    new Chart(document.getElementById('chartTypesCallers'), {
+      type: 'doughnut',
+      data: {
+        labels: ['GET /entries', 'GET /available-filters', 'GET /entries/:slug'],
+        datasets: [{
+          data: [76.31, 13.08, 10.61],
+          backgroundColor: [palette.primary, palette.warning, palette.tertiary],
+          borderColor: '#1a2028',
+          borderWidth: 2,
+        }]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+          legend: { position: 'bottom', labels: { padding: 10, font: { size: 11 } } },
+          tooltip: { callbacks: { label: (ctx) => `${ctx.label}: ${ctx.raw}%` } }
+        }
+      }
+    });
+
+    // Chart 3: Callers of content_entries_v3
+    new Chart(document.getElementById('chartEntriesCallers'), {
+      type: 'doughnut',
+      data: {
+        labels: ['GET /entries', 'GET /entries/:slug', 'GET /available-filters'],
+        datasets: [{
+          data: [72.74, 18.08, 9.18],
+          backgroundColor: [palette.primary, palette.tertiary, palette.warning],
+          borderColor: '#1a2028',
+          borderWidth: 2,
+        }]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+          legend: { position: 'bottom', labels: { padding: 10, font: { size: 11 } } },
+          tooltip: { callbacks: { label: (ctx) => `${ctx.label}: ${ctx.raw}%` } }
+        }
+      }
+    });
+
+    // Chart 4: Volume bar chart
+    new Chart(document.getElementById('chartVolume'), {
+      type: 'bar',
+      data: {
+        labels: ['content_types_v2', 'content_entries_v3'],
+        datasets: [{
+          label: 'calls/min',
+          data: [534, 501],
+          backgroundColor: [palette.primary, palette.secondary],
+          borderRadius: 6,
+        }]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        indexAxis: 'y',
+        plugins: {
+          legend: { display: false },
+          tooltip: { callbacks: { label: (ctx) => `${ctx.raw} calls/min` } }
+        },
+        scales: {
+          x: { grid: { color: '#2c3540' }, ticks: { color: '#a0a8b0' } },
+          y: { grid: { display: false }, ticks: { color: '#e6e6e6', font: { size: 13 } } }
+        }
+      }
+    });
+
+    // Chart 5: Quick win before/after
+    new Chart(document.getElementById('chartQuickWin'), {
+      type: 'bar',
+      data: {
+        labels: ['content_types_v2 search', 'content_entries_v3 search', 'Total'],
+        datasets: [
+          {
+            label: 'Antes (calls/min)',
+            data: [534, 501, 1035],
+            backgroundColor: palette.danger,
+            borderRadius: 6,
+          },
+          {
+            label: 'Depois (calls/min)',
+            data: [0, 501, 501],
+            backgroundColor: palette.primary,
+            borderRadius: 6,
+          }
+        ]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+          legend: { position: 'top', labels: { padding: 16, font: { size: 12 } } },
+          tooltip: { callbacks: { label: (ctx) => `${ctx.dataset.label}: ${ctx.raw}` } }
+        },
+        scales: {
+          x: { grid: { display: false }, ticks: { color: '#a0a8b0' } },
+          y: { grid: { color: '#2c3540' }, ticks: { color: '#a0a8b0' } }
+        }
+      }
+    });
+  </script>
+</body>
+
+</html>
