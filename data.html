@@ -1,0 +1,2037 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+
+<head>
+  <meta charset="UTF-8">
+  <title>Dados do parque — análise de volume CMS</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+  <style>
+    :root {
+      --bg: #0f1419;
+      --bg-card: #1a2028;
+      --bg-hover: #242b34;
+      --border: #2c3540;
+      --text: #e6e6e6;
+      --text-dim: #a0a8b0;
+      --accent: #4ade80;
+      --accent-2: #38bdf8;
+      --danger: #f87171;
+      --warning: #fbbf24;
+      --success: #4ade80;
+      --purple: #c084fc;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.6;
+      padding: 40px 20px;
+    }
+
+    .container {
+      max-width: 1400px;
+      margin: 0 auto;
+    }
+
+    h1 {
+      font-size: 32px;
+      margin-bottom: 8px;
+      color: #fff;
+    }
+
+    .subtitle {
+      color: var(--text-dim);
+      font-size: 14px;
+      margin-bottom: 40px;
+      padding-bottom: 20px;
+      border-bottom: 1px solid var(--border);
+    }
+
+    h2 {
+      font-size: 22px;
+      margin: 48px 0 20px;
+      color: #fff;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    h2::before {
+      content: '';
+      display: inline-block;
+      width: 4px;
+      height: 20px;
+      background: var(--accent);
+      border-radius: 2px;
+    }
+
+    h3 {
+      font-size: 17px;
+      margin: 24px 0 12px;
+      color: var(--accent-2);
+    }
+
+    p {
+      margin-bottom: 12px;
+      color: var(--text);
+    }
+
+    code {
+      background: var(--bg-card);
+      padding: 2px 6px;
+      border-radius: 4px;
+      font-family: 'JetBrains Mono', Consolas, monospace;
+      font-size: 13px;
+      color: var(--accent-2);
+    }
+
+    strong {
+      color: #fff;
+    }
+
+    a {
+      color: var(--accent-2);
+      text-decoration: none;
+    }
+
+    a:hover {
+      text-decoration: underline;
+    }
+
+    .kpi-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+      gap: 16px;
+      margin-bottom: 24px;
+    }
+
+    .kpi {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 20px;
+    }
+
+    .kpi-label {
+      font-size: 12px;
+      color: var(--text-dim);
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      margin-bottom: 8px;
+    }
+
+    .kpi-value {
+      font-size: 28px;
+      font-weight: 700;
+      color: #fff;
+      line-height: 1.1;
+    }
+
+    .kpi-value.danger {
+      color: var(--danger);
+    }
+
+    .kpi-value.warning {
+      color: var(--warning);
+    }
+
+    .kpi-value.success {
+      color: var(--success);
+    }
+
+    .kpi-value.purple {
+      color: var(--purple);
+    }
+
+    .kpi-sub {
+      font-size: 13px;
+      color: var(--text-dim);
+      margin-top: 6px;
+    }
+
+    .table-wrap {
+      overflow-x: auto;
+      margin: 16px 0;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 13.5px;
+    }
+
+    th {
+      text-align: left;
+      padding: 12px;
+      background: var(--bg-hover);
+      color: var(--text-dim);
+      font-weight: 600;
+      text-transform: uppercase;
+      font-size: 11px;
+      letter-spacing: 0.5px;
+      border-bottom: 1px solid var(--border);
+      white-space: nowrap;
+    }
+
+    td {
+      padding: 10px 12px;
+      border-bottom: 1px solid var(--border);
+      vertical-align: middle;
+    }
+
+    tr:last-child td {
+      border-bottom: none;
+    }
+
+    tr:hover td {
+      background: var(--bg-hover);
+    }
+
+    td.num {
+      text-align: right;
+      font-family: 'JetBrains Mono', monospace;
+    }
+
+    td.highlight {
+      color: var(--accent);
+      font-weight: 600;
+    }
+
+    td.strong {
+      font-weight: 600;
+      color: #fff;
+    }
+
+    td.danger {
+      color: var(--danger);
+      font-weight: 600;
+    }
+
+    td.warning {
+      color: var(--warning);
+      font-weight: 600;
+    }
+
+    td.dim {
+      color: var(--text-dim);
+      font-style: italic;
+    }
+
+    .id {
+      font-family: 'JetBrains Mono', Consolas, monospace;
+      font-size: 12px;
+      color: var(--accent-2);
+      cursor: pointer;
+      padding: 3px 6px;
+      border-radius: 4px;
+      background: var(--bg);
+      border: 1px solid var(--border);
+      transition: all 0.15s;
+      user-select: all;
+      display: inline-block;
+    }
+
+    .id:hover {
+      background: var(--bg-hover);
+      border-color: var(--accent-2);
+      color: #fff;
+    }
+
+    .id.copied {
+      background: rgba(74, 222, 128, 0.15);
+      border-color: var(--success);
+      color: var(--success);
+    }
+
+    .chart-wrapper {
+      position: relative;
+      height: 320px;
+      margin: 20px 0;
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 20px;
+    }
+
+    .chart-wrapper.tall {
+      height: 400px;
+    }
+
+    .chart-wrapper.xtall {
+      height: 500px;
+    }
+
+    .callout {
+      background: linear-gradient(135deg, rgba(74, 222, 128, 0.1), rgba(56, 189, 248, 0.05));
+      border: 1px solid rgba(74, 222, 128, 0.3);
+      border-radius: 8px;
+      padding: 20px 24px;
+      margin: 20px 0;
+    }
+
+    .callout.warning {
+      background: linear-gradient(135deg, rgba(251, 191, 36, 0.1), rgba(248, 113, 113, 0.05));
+      border-color: rgba(251, 191, 36, 0.3);
+    }
+
+    .callout.danger {
+      background: linear-gradient(135deg, rgba(248, 113, 113, 0.1), rgba(248, 113, 113, 0.05));
+      border-color: rgba(248, 113, 113, 0.3);
+    }
+
+    .callout-title {
+      font-size: 13px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      color: var(--accent);
+      margin-bottom: 8px;
+    }
+
+    .callout.warning .callout-title {
+      color: var(--warning);
+    }
+
+    .callout.danger .callout-title {
+      color: var(--danger);
+    }
+
+    ul {
+      padding-left: 20px;
+      margin-bottom: 12px;
+    }
+
+    li {
+      margin-bottom: 6px;
+      color: var(--text);
+    }
+
+    .toast {
+      position: fixed;
+      bottom: 24px;
+      right: 24px;
+      background: var(--bg-card);
+      border: 1px solid var(--success);
+      color: var(--success);
+      padding: 10px 16px;
+      border-radius: 6px;
+      font-size: 13px;
+      opacity: 0;
+      transform: translateY(20px);
+      transition: all 0.25s;
+      pointer-events: none;
+      z-index: 1000;
+    }
+
+    .toast.show {
+      opacity: 1;
+      transform: translateY(0);
+    }
+
+    .toc {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 20px 28px;
+      margin-bottom: 32px;
+      columns: 2;
+      column-gap: 40px;
+    }
+
+    @media (max-width: 700px) {
+      .toc {
+        columns: 1;
+      }
+    }
+
+    .toc li {
+      margin-bottom: 6px;
+    }
+
+    .toc a {
+      color: var(--text);
+    }
+
+    .toc a:hover {
+      color: var(--accent-2);
+    }
+
+    .footer {
+      margin-top: 60px;
+      padding-top: 20px;
+      border-top: 1px solid var(--border);
+      color: var(--text-dim);
+      font-size: 13px;
+    }
+
+    .hint {
+      font-size: 12px;
+      color: var(--text-dim);
+      font-style: italic;
+      margin-top: 4px;
+    }
+  </style>
+</head>
+
+<body>
+  <div class="container">
+
+    <h1>Dados do parque — análise de volume CMS</h1>
+    <p class="subtitle">
+      Snapshot dos bancos <strong>hosting-api</strong>, <strong>cms-api</strong> e <strong>general-api</strong> em
+      <strong>2026-09-22</strong> · 360 contas no hosting · 1.216 canais · 13.532 páginas · 45.003 content entries
+    </p>
+
+    <div class="callout">
+      <div class="callout-title">Como usar</div>
+      <p><strong>Clique em qualquer ID</strong> para copiar para o clipboard. Contas exibidas vêm com <strong>nome do
+          cliente</strong> (via general-api). Contas marcadas como <em>não mapeada</em> são as que não estão registradas
+        em general-api — provavelmente legado do monolito antigo. Para a análise conceitual do fluxo, veja <a
+          href="./analise-pageview-para-cms.html">analise-pageview-para-cms.html</a>. Reprodução:
+        <code>./docs/analise-volume/run.sh</code>.</p>
+    </div>
+
+    <ol class="toc">
+      <li><a href="#overview">Overview do parque</a></li>
+      <li><a href="#distribuicao-blocos">Distribuição de blocos dinâmicos por página</a></li>
+      <li><a href="#tipos-blocos">Tipos de bloco mais usados (duplicação)</a></li>
+      <li><a href="#top-contas">Top contas por nº de canais</a></li>
+      <li><a href="#consolidado">Top contas por volume estimado no CMS</a></li>
+      <li><a href="#content-types">Content types por complexidade (fan-out interno)</a></li>
+      <li><a href="#sitemap">Volume de entries publicadas por conta</a></li>
+      <li><a href="#canais-densos">Canais mais densos em blocos dinâmicos</a></li>
+      <li><a href="#anomalias">Anomalias e pontos de atenção</a></li>
+    </ol>
+
+    <h2 id="overview">Overview do parque</h2>
+
+    <div class="kpi-grid">
+      <div class="kpi">
+        <div class="kpi-label">Hosting</div>
+        <div class="kpi-value">360</div>
+        <div class="kpi-sub">contas tenant</div>
+      </div>
+      <div class="kpi">
+        <div class="kpi-label">Hosting</div>
+        <div class="kpi-value">1.216</div>
+        <div class="kpi-sub">canais publicáveis</div>
+      </div>
+      <div class="kpi">
+        <div class="kpi-label">Hosting</div>
+        <div class="kpi-value">13.532</div>
+        <div class="kpi-sub">páginas (7.724 STATIC · 2.913 LIST · 2.895 ITEM)</div>
+      </div>
+      <div class="kpi">
+        <div class="kpi-label">Hosting · páginas c/ estrutura</div>
+        <div class="kpi-value warning">65,7%</div>
+        <div class="kpi-sub">8.696 com blocos dinâmicos</div>
+      </div>
+      <div class="kpi">
+        <div class="kpi-label">Hosting · páginas c/ estrutura</div>
+        <div class="kpi-value success">34,3%</div>
+        <div class="kpi-sub">4.545 SEM bloco dinâmico</div>
+      </div>
+      <div class="kpi">
+        <div class="kpi-label">Blocos dinâmicos</div>
+        <div class="kpi-value danger">21.221</div>
+        <div class="kpi-sub">ocorrências totais · média 2,44/página</div>
+      </div>
+      <div class="kpi">
+        <div class="kpi-label">CMS</div>
+        <div class="kpi-value">20</div>
+        <div class="kpi-sub">content types (16 em <code>general</code>)</div>
+      </div>
+      <div class="kpi">
+        <div class="kpi-label">CMS</div>
+        <div class="kpi-value">45.003</div>
+        <div class="kpi-sub">content entries (34.222 publicadas)</div>
+      </div>
+      <div class="kpi">
+        <div class="kpi-label">CMS</div>
+        <div class="kpi-value">10</div>
+        <div class="kpi-sub">relações entre content types</div>
+      </div>
+      <div class="kpi">
+        <div class="kpi-label">General · Accounts</div>
+        <div class="kpi-value">225</div>
+        <div class="kpi-sub">contas registradas</div>
+      </div>
+    </div>
+
+    <h2 id="distribuicao-blocos">Distribuição de blocos dinâmicos por página</h2>
+    <div class="chart-wrapper tall"><canvas id="chartDistDynamic"></canvas></div>
+    <p style="font-size: 13px; color: var(--text-dim);">Escala log no Y. <strong>4.545 páginas (34%)</strong> não têm
+      bloco dinâmico. <strong>8.696 (66%)</strong> têm ao menos 1. Média entre as que têm: <strong>2,44
+        blocos/página</strong>. Cauda extrema: 96 páginas com 12 blocos, 37 com 13, e outras com 9-11.</p>
+
+    <h2 id="tipos-blocos">Tipos de bloco mais usados (duplicação)</h2>
+    <div class="chart-wrapper tall"><canvas id="chartBlockTypes"></canvas></div>
+
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Tipo de bloco</th>
+            <th style="text-align:right;">Ocorrências</th>
+            <th style="text-align:right;">Páginas usando</th>
+            <th style="text-align:right;">Taxa duplicação</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td class="strong">DynamicCarouselAndGridWrapper</td>
+            <td class="num">8.177</td>
+            <td class="num">4.799</td>
+            <td class="num danger">1,70×</td>
+          </tr>
+          <tr>
+            <td class="strong">DynamicListWrapper</td>
+            <td class="num">4.207</td>
+            <td class="num">3.823</td>
+            <td class="num">1,10×</td>
+          </tr>
+          <tr>
+            <td class="strong">DynamicFormWithGalleryWrapper</td>
+            <td class="num">2.536</td>
+            <td class="num">2.516</td>
+            <td class="num">1,01×</td>
+          </tr>
+          <tr>
+            <td class="strong">MediaSectionDynamicWrapper</td>
+            <td class="num">2.029</td>
+            <td class="num">958</td>
+            <td class="num danger">2,12×</td>
+          </tr>
+          <tr>
+            <td class="strong">DynamicGalleryWrapper</td>
+            <td class="num">1.181</td>
+            <td class="num">1.176</td>
+            <td class="num">1,00×</td>
+          </tr>
+          <tr>
+            <td>RichTextDynamicWrapper</td>
+            <td class="num">921</td>
+            <td class="num">921</td>
+            <td class="num">1,00×</td>
+          </tr>
+          <tr>
+            <td>SpecificationsDynamicWrapper</td>
+            <td class="num">642</td>
+            <td class="num">641</td>
+            <td class="num">1,00×</td>
+          </tr>
+          <tr>
+            <td>VehicleItemsDynamicWrapper</td>
+            <td class="num">489</td>
+            <td class="num">489</td>
+            <td class="num">1,00×</td>
+          </tr>
+          <tr>
+            <td>DynamicCarouselWrapper</td>
+            <td class="num">282</td>
+            <td class="num">279</td>
+            <td class="num">1,01×</td>
+          </tr>
+          <tr>
+            <td>BreadcrumbDynamicWrapper</td>
+            <td class="num">196</td>
+            <td class="num">196</td>
+            <td class="num">1,00×</td>
+          </tr>
+          <tr>
+            <td>UnitInfoWrapper</td>
+            <td class="num">191</td>
+            <td class="num">118</td>
+            <td class="num warning">1,62×</td>
+          </tr>
+          <tr>
+            <td>DynamicBannerWrapper</td>
+            <td class="num">146</td>
+            <td class="num">146</td>
+            <td class="num">1,00×</td>
+          </tr>
+          <tr>
+            <td>Viewer360Wrapper</td>
+            <td class="num">113</td>
+            <td class="num">113</td>
+            <td class="num">1,00×</td>
+          </tr>
+          <tr>
+            <td>VersionColorSelectorWrapper</td>
+            <td class="num">93</td>
+            <td class="num">92</td>
+            <td class="num">1,01×</td>
+          </tr>
+          <tr>
+            <td>CodeBlockDynamicWrapper</td>
+            <td class="num">18</td>
+            <td class="num">18</td>
+            <td class="num">1,00×</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="callout danger">
+      <div class="callout-title">Duplicação real medida</div>
+      <p><code>MediaSectionDynamic</code>: <strong>2.029 ocorrências em 958 páginas</strong> → média
+        <strong>2,12×</strong> por página (o pior). <code>DynamicCarouselAndGrid</code>: <strong>8.177 em 4.799</strong>
+        → média <strong>1,70×</strong> (~3.400 requests extras). <code>UnitInfo</code>: 1,62×. Cada duplicação é uma
+        request extra ao CMS que a arquitetura atual não deduplica.</p>
+    </div>
+
+    <h2 id="top-contas">Top 25 contas por nº de canais</h2>
+    <p>Clique num <span class="id" style="cursor:default; color: var(--accent-2);">ID</span> para copiar.</p>
+
+    <div class="chart-wrapper tall"><canvas id="chartTopAccountsChannels"></canvas></div>
+
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>#</th>
+            <th>accountId (hosting)</th>
+            <th>Cliente</th>
+            <th style="text-align:right;">Canais</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td class="num">1</td>
+            <td><span class="id"
+                data-copy="703d2f91-1a5c-4dc1-a742-ae5c7eb7df89">703d2f91-1a5c-4dc1-a742-ae5c7eb7df89</span></td>
+            <td class="strong">Grupo Automob</td>
+            <td class="num warning">20</td>
+          </tr>
+          <tr>
+            <td class="num">2</td>
+            <td><span class="id"
+                data-copy="0d745691-25fe-4b76-ae43-868c4fe7e94e">0d745691-25fe-4b76-ae43-868c4fe7e94e</span></td>
+            <td class="strong">Grupo Parvi</td>
+            <td class="num warning">18</td>
+          </tr>
+          <tr>
+            <td class="num">3</td>
+            <td><span class="id"
+                data-copy="32f5dc69-9b8c-40a1-b6a8-7ad7de74f2db">32f5dc69-9b8c-40a1-b6a8-7ad7de74f2db</span></td>
+            <td class="strong">Itavema</td>
+            <td class="num warning">16</td>
+          </tr>
+          <tr>
+            <td class="num">4</td>
+            <td><span class="id"
+                data-copy="3cb89a87-2b6b-4cea-8515-63e7c7a53da4">3cb89a87-2b6b-4cea-8515-63e7c7a53da4</span></td>
+            <td class="strong">Grupo Via1</td>
+            <td class="num">14</td>
+          </tr>
+          <tr>
+            <td class="num">5</td>
+            <td><span class="id"
+                data-copy="85b9ead4-ff4e-4fa4-8549-875e4ce1739c">85b9ead4-ff4e-4fa4-8549-875e4ce1739c</span></td>
+            <td class="strong">Grupo Barigüi</td>
+            <td class="num">13</td>
+          </tr>
+          <tr>
+            <td class="num">6</td>
+            <td><span class="id"
+                data-copy="2bc4653e-e04a-4f5b-b03f-6b76c4546441">2bc4653e-e04a-4f5b-b03f-6b76c4546441</span></td>
+            <td class="dim">(não mapeada em general-api)</td>
+            <td class="num">11</td>
+          </tr>
+          <tr>
+            <td class="num">7</td>
+            <td><span class="id"
+                data-copy="0a3a8770-0f07-4c14-9e56-79b2b53cd560">0a3a8770-0f07-4c14-9e56-79b2b53cd560</span></td>
+            <td class="strong">GRUPO SAGA</td>
+            <td class="num">11</td>
+          </tr>
+          <tr>
+            <td class="num">8</td>
+            <td><span class="id"
+                data-copy="e952fb36-bce9-421b-9f39-d02e5abd4650">e952fb36-bce9-421b-9f39-d02e5abd4650</span></td>
+            <td class="strong">Grupo Enzo</td>
+            <td class="num">11</td>
+          </tr>
+          <tr>
+            <td class="num">9</td>
+            <td><span class="id"
+                data-copy="b00bfa1b-3822-45dc-8e7c-95997114f0c5">b00bfa1b-3822-45dc-8e7c-95997114f0c5</span></td>
+            <td class="strong">AutoForce</td>
+            <td class="num">11</td>
+          </tr>
+          <tr>
+            <td class="num">10</td>
+            <td><span class="id"
+                data-copy="4b3f6a14-e4dd-4d2d-94f0-16d34c98c0da">4b3f6a14-e4dd-4d2d-94f0-16d34c98c0da</span></td>
+            <td class="strong">Grupo Timber</td>
+            <td class="num">10</td>
+          </tr>
+          <tr>
+            <td class="num">11</td>
+            <td><span class="id"
+                data-copy="3ced3b17-4239-44a3-9e80-e5c51ec738b8">3ced3b17-4239-44a3-9e80-e5c51ec738b8</span></td>
+            <td class="strong">Grupo Viamar</td>
+            <td class="num">10</td>
+          </tr>
+          <tr>
+            <td class="num">12</td>
+            <td><span class="id"
+                data-copy="7cd9699d-c37e-4c9c-9086-e4be8472d70a">7cd9699d-c37e-4c9c-9086-e4be8472d70a</span></td>
+            <td class="dim">(não mapeada)</td>
+            <td class="num">9</td>
+          </tr>
+          <tr>
+            <td class="num">13</td>
+            <td><span class="id"
+                data-copy="49e83950-2ffe-41db-840d-412d97f27a85">49e83950-2ffe-41db-840d-412d97f27a85</span></td>
+            <td class="dim">(não mapeada)</td>
+            <td class="num">9</td>
+          </tr>
+          <tr>
+            <td class="num">14</td>
+            <td><span class="id"
+                data-copy="6671404a-52bd-41b2-819d-99b6fdb8184e">6671404a-52bd-41b2-819d-99b6fdb8184e</span></td>
+            <td class="dim">(não mapeada)</td>
+            <td class="num">8</td>
+          </tr>
+          <tr>
+            <td class="num">15</td>
+            <td><span class="id"
+                data-copy="6ab21342-884b-457e-9f00-85a594fc7cb3">6ab21342-884b-457e-9f00-85a594fc7cb3</span></td>
+            <td class="dim">(não mapeada)</td>
+            <td class="num">8</td>
+          </tr>
+          <tr>
+            <td class="num">16</td>
+            <td><span class="id"
+                data-copy="f9f161f7-5901-428e-b24a-aacb305d18f7">f9f161f7-5901-428e-b24a-aacb305d18f7</span></td>
+            <td class="strong">Disnove Yamaha</td>
+            <td class="num">8</td>
+          </tr>
+          <tr>
+            <td class="num">17</td>
+            <td><span class="id"
+                data-copy="792bb517-969b-4c15-99ea-82e3aea20720">792bb517-969b-4c15-99ea-82e3aea20720</span></td>
+            <td class="strong">McLarty Maia</td>
+            <td class="num">8</td>
+          </tr>
+          <tr>
+            <td class="num">18</td>
+            <td><span class="id"
+                data-copy="504b2935-de57-4302-8246-3c9a94e2435d">504b2935-de57-4302-8246-3c9a94e2435d</span></td>
+            <td class="strong">Grupo GNC</td>
+            <td class="num">8</td>
+          </tr>
+          <tr>
+            <td class="num">19</td>
+            <td><span class="id"
+                data-copy="f7825b7c-5120-4a30-ae87-f50f1db7101a">f7825b7c-5120-4a30-ae87-f50f1db7101a</span></td>
+            <td class="strong">Grupo Caminho</td>
+            <td class="num">6</td>
+          </tr>
+          <tr>
+            <td class="num">20</td>
+            <td><span class="id"
+                data-copy="d49eaa42-9a03-498d-8dc8-81fd5a93c111">d49eaa42-9a03-498d-8dc8-81fd5a93c111</span></td>
+            <td class="strong">Grupo T-line</td>
+            <td class="num">6</td>
+          </tr>
+          <tr>
+            <td class="num">21</td>
+            <td><span class="id"
+                data-copy="6ea2a0f6-b320-4a4e-abbd-a5392c3f1998">6ea2a0f6-b320-4a4e-abbd-a5392c3f1998</span></td>
+            <td class="strong">Marajó</td>
+            <td class="num">6</td>
+          </tr>
+          <tr>
+            <td class="num">22</td>
+            <td><span class="id"
+                data-copy="569cdfc0-05a6-42fb-b470-dd067a03faed">569cdfc0-05a6-42fb-b470-dd067a03faed</span></td>
+            <td class="strong">Carmais</td>
+            <td class="num">6</td>
+          </tr>
+          <tr>
+            <td class="num">23</td>
+            <td><span class="id"
+                data-copy="12b6646f-8561-4a8d-adc5-6e93ae4fff27">12b6646f-8561-4a8d-adc5-6e93ae4fff27</span></td>
+            <td class="dim">(não mapeada)</td>
+            <td class="num">6</td>
+          </tr>
+          <tr>
+            <td class="num">24</td>
+            <td><span class="id"
+                data-copy="ca9b401d-e7d9-4d2b-9742-d5ac1f0d281f">ca9b401d-e7d9-4d2b-9742-d5ac1f0d281f</span></td>
+            <td class="strong">PG Prime</td>
+            <td class="num">6</td>
+          </tr>
+          <tr>
+            <td class="num">25</td>
+            <td><span class="id"
+                data-copy="8d026fa5-98b0-4b3c-b81c-938f30a0835a">8d026fa5-98b0-4b3c-b81c-938f30a0835a</span></td>
+            <td class="strong">Grupo Andreta</td>
+            <td class="num">6</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <h2 id="consolidado">Top 25 contas por volume estimado no CMS</h2>
+    <p>Coluna estimada assume <strong>10.000 pageviews/dia por canal</strong> — ajuste para o real de cada cliente.</p>
+
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>#</th>
+            <th>accountId</th>
+            <th>Cliente</th>
+            <th style="text-align:right;">Canais</th>
+            <th style="text-align:right;">Páginas</th>
+            <th style="text-align:right;">Média blocos</th>
+            <th style="text-align:right;">p95 blocos</th>
+            <th style="text-align:right;">Req CMS/dia · 10k pv</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr class="danger">
+            <td class="num">1</td>
+            <td><span class="id"
+                data-copy="0a3a8770-0f07-4c14-9e56-79b2b53cd560">0a3a8770-0f07-4c14-9e56-79b2b53cd560</span></td>
+            <td class="strong">GRUPO SAGA</td>
+            <td class="num">11</td>
+            <td class="num">282</td>
+            <td class="num">1,87</td>
+            <td class="num warning">7,5</td>
+            <td class="num highlight">308.799</td>
+          </tr>
+          <tr class="danger">
+            <td class="num">2</td>
+            <td><span class="id"
+                data-copy="703d2f91-1a5c-4dc1-a742-ae5c7eb7df89">703d2f91-1a5c-4dc1-a742-ae5c7eb7df89</span></td>
+            <td class="strong">Grupo Automob</td>
+            <td class="num">20</td>
+            <td class="num">400</td>
+            <td class="num">1,02</td>
+            <td class="num">5,9</td>
+            <td class="num highlight">305.760</td>
+          </tr>
+          <tr class="danger">
+            <td class="num">3</td>
+            <td><span class="id"
+                data-copy="0d745691-25fe-4b76-ae43-868c4fe7e94e">0d745691-25fe-4b76-ae43-868c4fe7e94e</span></td>
+            <td class="strong">Grupo Parvi</td>
+            <td class="num">18</td>
+            <td class="num">283</td>
+            <td class="num">1,12</td>
+            <td class="num warning">8,0</td>
+            <td class="num highlight">302.087</td>
+          </tr>
+          <tr class="danger">
+            <td class="num">4</td>
+            <td><span class="id"
+                data-copy="85b9ead4-ff4e-4fa4-8549-875e4ce1739c">85b9ead4-ff4e-4fa4-8549-875e4ce1739c</span></td>
+            <td class="strong">Grupo Barigüi</td>
+            <td class="num">13</td>
+            <td class="num">318</td>
+            <td class="num">1,49</td>
+            <td class="num warning">7,8</td>
+            <td class="num highlight">290.803</td>
+          </tr>
+          <tr>
+            <td class="num">5</td>
+            <td><span class="id"
+                data-copy="792bb517-969b-4c15-99ea-82e3aea20720">792bb517-969b-4c15-99ea-82e3aea20720</span></td>
+            <td class="strong">McLarty Maia</td>
+            <td class="num">8</td>
+            <td class="num">229</td>
+            <td class="num">1,74</td>
+            <td class="num">6,0</td>
+            <td class="num">209.032</td>
+          </tr>
+          <tr>
+            <td class="num">6</td>
+            <td><span class="id"
+                data-copy="8d026fa5-98b0-4b3c-b81c-938f30a0835a">8d026fa5-98b0-4b3c-b81c-938f30a0835a</span></td>
+            <td class="strong">Grupo Andreta</td>
+            <td class="num">6</td>
+            <td class="num">173</td>
+            <td class="num">1,99</td>
+            <td class="num">7,0</td>
+            <td class="num">179.425</td>
+          </tr>
+          <tr>
+            <td class="num">7</td>
+            <td><span class="id"
+                data-copy="32f5dc69-9b8c-40a1-b6a8-7ad7de74f2db">32f5dc69-9b8c-40a1-b6a8-7ad7de74f2db</span></td>
+            <td class="strong">Itavema</td>
+            <td class="num">16</td>
+            <td class="num">222</td>
+            <td class="num">0,64</td>
+            <td class="num">5,5</td>
+            <td class="num">153.545</td>
+          </tr>
+          <tr>
+            <td class="num">8</td>
+            <td><span class="id"
+                data-copy="123e4fd2-b824-4668-96e6-3d2b5b69c591">123e4fd2-b824-4668-96e6-3d2b5b69c591</span></td>
+            <td class="strong">Redenção</td>
+            <td class="num">5</td>
+            <td class="num">137</td>
+            <td class="num">1,72</td>
+            <td class="num">6,0</td>
+            <td class="num">128.758</td>
+          </tr>
+          <tr>
+            <td class="num">9</td>
+            <td><span class="id"
+                data-copy="3ced3b17-4239-44a3-9e80-e5c51ec738b8">3ced3b17-4239-44a3-9e80-e5c51ec738b8</span></td>
+            <td class="strong">Grupo Viamar</td>
+            <td class="num">10</td>
+            <td class="num">66</td>
+            <td class="num">0,83</td>
+            <td class="num">6,6</td>
+            <td class="num">124.603</td>
+          </tr>
+          <tr>
+            <td class="num">10</td>
+            <td><span class="id"
+                data-copy="3cb89a87-2b6b-4cea-8515-63e7c7a53da4">3cb89a87-2b6b-4cea-8515-63e7c7a53da4</span></td>
+            <td class="strong">Grupo Via1</td>
+            <td class="num">14</td>
+            <td class="num">245</td>
+            <td class="num">0,48</td>
+            <td class="num">5,4</td>
+            <td class="num">101.376</td>
+          </tr>
+          <tr>
+            <td class="num">11</td>
+            <td><span class="id"
+                data-copy="777094c5-3981-4ae2-8622-68c8f6d9c589">777094c5-3981-4ae2-8622-68c8f6d9c589</span></td>
+            <td class="strong">Saldanha Moreira (Golden Motors)</td>
+            <td class="num">3</td>
+            <td class="num">80</td>
+            <td class="num">2,22</td>
+            <td class="num">6,5</td>
+            <td class="num">99.688</td>
+          </tr>
+          <tr>
+            <td class="num">12</td>
+            <td><span class="id"
+                data-copy="6f0aae20-107e-4587-b4f0-89bd57a5f44c">6f0aae20-107e-4587-b4f0-89bd57a5f44c</span></td>
+            <td class="strong">Grupo Discautol</td>
+            <td class="num">3</td>
+            <td class="num">80</td>
+            <td class="num">2,18</td>
+            <td class="num">6,1</td>
+            <td class="num">98.237</td>
+          </tr>
+          <tr>
+            <td class="num">13</td>
+            <td><span class="id"
+                data-copy="2010662e-91cd-435c-a76b-2df8e67cc59e">2010662e-91cd-435c-a76b-2df8e67cc59e</span></td>
+            <td class="strong">Autokraft</td>
+            <td class="num">3</td>
+            <td class="num">81</td>
+            <td class="num">2,18</td>
+            <td class="num warning">7,3</td>
+            <td class="num">98.132</td>
+          </tr>
+          <tr>
+            <td class="num">14</td>
+            <td><span class="id"
+                data-copy="1b09f6dd-ad05-4ee6-840c-1eec2c86b447">1b09f6dd-ad05-4ee6-840c-1eec2c86b447</span></td>
+            <td class="strong">Grupo Cycosa</td>
+            <td class="num">4</td>
+            <td class="num">60</td>
+            <td class="num">1,63</td>
+            <td class="num">5,3</td>
+            <td class="num">97.792</td>
+          </tr>
+          <tr>
+            <td class="num">15</td>
+            <td><span class="id"
+                data-copy="8ac66987-5d0c-45b8-a331-67e554f6cde9">8ac66987-5d0c-45b8-a331-67e554f6cde9</span></td>
+            <td class="strong">Grupo Vega</td>
+            <td class="num">5</td>
+            <td class="num">96</td>
+            <td class="num">1,30</td>
+            <td class="num">6,0</td>
+            <td class="num">97.777</td>
+          </tr>
+          <tr>
+            <td class="num">16</td>
+            <td><span class="id"
+                data-copy="c2f11000-e7b4-4e1d-b8fe-7f59d1de7a77">c2f11000-e7b4-4e1d-b8fe-7f59d1de7a77</span></td>
+            <td class="strong">Grupo EBD</td>
+            <td class="num">3</td>
+            <td class="num">103</td>
+            <td class="num">2,12</td>
+            <td class="num">6,5</td>
+            <td class="num">95.559</td>
+          </tr>
+          <tr>
+            <td class="num">17</td>
+            <td><span class="id"
+                data-copy="f32c0509-1faf-4d6c-b8fb-8b5e8987d4d3">f32c0509-1faf-4d6c-b8fb-8b5e8987d4d3</span></td>
+            <td class="strong">Bari Automóveis</td>
+            <td class="num">5</td>
+            <td class="num">76</td>
+            <td class="num">1,25</td>
+            <td class="num">6,0</td>
+            <td class="num">93.871</td>
+          </tr>
+          <tr>
+            <td class="num">18</td>
+            <td><span class="id"
+                data-copy="d49eaa42-9a03-498d-8dc8-81fd5a93c111">d49eaa42-9a03-498d-8dc8-81fd5a93c111</span></td>
+            <td class="strong">Grupo T-line</td>
+            <td class="num">6</td>
+            <td class="num">112</td>
+            <td class="num">1,01</td>
+            <td class="num">6,0</td>
+            <td class="num">90.940</td>
+          </tr>
+          <tr>
+            <td class="num">19</td>
+            <td><span class="id"
+                data-copy="79996b79-68dc-4a57-bf59-1a930b6b4df5">79996b79-68dc-4a57-bf59-1a930b6b4df5</span></td>
+            <td class="strong">Grupo Gama</td>
+            <td class="num">5</td>
+            <td class="num">94</td>
+            <td class="num">1,15</td>
+            <td class="num warning">8,8</td>
+            <td class="num">86.607</td>
+          </tr>
+          <tr>
+            <td class="num">20</td>
+            <td><span class="id"
+                data-copy="6ea2a0f6-b320-4a4e-abbd-a5392c3f1998">6ea2a0f6-b320-4a4e-abbd-a5392c3f1998</span></td>
+            <td class="strong">Marajó</td>
+            <td class="num">6</td>
+            <td class="num">130</td>
+            <td class="num">0,89</td>
+            <td class="num">5,1</td>
+            <td class="num">79.674</td>
+          </tr>
+          <tr>
+            <td class="num">21</td>
+            <td><span class="id"
+                data-copy="7bad17aa-d0f1-490c-903b-67552895c794">7bad17aa-d0f1-490c-903b-67552895c794</span></td>
+            <td class="strong">Stellantis</td>
+            <td class="num">4</td>
+            <td class="num">41</td>
+            <td class="num">1,32</td>
+            <td class="num">6,0</td>
+            <td class="num">79.140</td>
+          </tr>
+          <tr>
+            <td class="num">22</td>
+            <td><span class="id"
+                data-copy="2a3cd82b-8548-4d2b-a6d0-08e2db1e8534">2a3cd82b-8548-4d2b-a6d0-08e2db1e8534</span></td>
+            <td class="strong">Grupo AC Campo</td>
+            <td class="num">3</td>
+            <td class="num">88</td>
+            <td class="num">1,71</td>
+            <td class="num">5,0</td>
+            <td class="num">77.000</td>
+          </tr>
+          <tr>
+            <td class="num">23</td>
+            <td><span class="id"
+                data-copy="e952fb36-bce9-421b-9f39-d02e5abd4650">e952fb36-bce9-421b-9f39-d02e5abd4650</span></td>
+            <td class="strong">Grupo Enzo</td>
+            <td class="num">11</td>
+            <td class="num">113</td>
+            <td class="num">0,44</td>
+            <td class="num">5,8</td>
+            <td class="num">72.036</td>
+          </tr>
+          <tr>
+            <td class="num">24</td>
+            <td><span class="id"
+                data-copy="29958e2c-1ada-4ac3-9226-1add2685f07a">29958e2c-1ada-4ac3-9226-1add2685f07a</span></td>
+            <td class="strong">Cirne Motos</td>
+            <td class="num">2</td>
+            <td class="num">25</td>
+            <td class="num">2,38</td>
+            <td class="num">5,0</td>
+            <td class="num">71.250</td>
+          </tr>
+          <tr>
+            <td class="num">25</td>
+            <td><span class="id"
+                data-copy="cc3cd9b9-17b1-495a-902e-cdd3b1c5d8c9">cc3cd9b9-17b1-495a-902e-cdd3b1c5d8c9</span></td>
+            <td class="strong">Grupo Autobel</td>
+            <td class="num">2</td>
+            <td class="num">86</td>
+            <td class="num">2,26</td>
+            <td class="num warning">8,7</td>
+            <td class="num">67.674</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="callout danger">
+      <div class="callout-title">Top 4 concentram ~1,2M req/dia projetadas</div>
+      <p>A 10k pageviews/canal/dia, as top 4 contas (<strong>GRUPO SAGA, Grupo Automob, Grupo Parvi, Grupo
+          Barigüi</strong>) somam <strong>~1,2M requests/dia</strong> ao CMS. As 25 do topo somam
+        <strong>~3M/dia</strong>. Aplicando o fan-out interno (2-6 OS queries por request), a ordem de grandeza bate com
+        o observado no Bonsai — <strong>o volume real é dominado por poucos grupos automotivos grandes</strong>.</p>
+    </div>
+
+    <h2 id="content-types">Content types por complexidade (fan-out interno no CMS)</h2>
+    <div class="chart-wrapper tall"><canvas id="chartCtFanout"></canvas></div>
+
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>#</th>
+            <th>contentTypeId</th>
+            <th>Nome</th>
+            <th>accountId</th>
+            <th style="text-align:right;">Campos</th>
+            <th style="text-align:right;">Relações</th>
+            <th style="text-align:right;">OS queries pior caso</th>
+            <th style="text-align:right;">Entries publicadas</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr class="danger">
+            <td class="num">1</td>
+            <td><span class="id"
+                data-copy="e91f6672-4e88-47cb-8817-6147687aa298">e91f6672-4e88-47cb-8817-6147687aa298</span></td>
+            <td class="strong">Modelo</td>
+            <td>general</td>
+            <td class="num">29</td>
+            <td class="num warning">5</td>
+            <td class="num danger">8</td>
+            <td class="num">3.337</td>
+          </tr>
+          <tr>
+            <td class="num">2</td>
+            <td><span class="id"
+                data-copy="823c4558-a992-435d-837a-73c4cfe16465">823c4558-a992-435d-837a-73c4cfe16465</span></td>
+            <td class="strong">Versao de Veiculo</td>
+            <td>general</td>
+            <td class="num">43</td>
+            <td class="num warning">4</td>
+            <td class="num danger">7</td>
+            <td class="num">11.312</td>
+          </tr>
+          <tr>
+            <td class="num">3</td>
+            <td><span class="id"
+                data-copy="e15b7558-6630-4074-9d42-8792e712eea9">e15b7558-6630-4074-9d42-8792e712eea9</span></td>
+            <td class="strong">Consórcios</td>
+            <td>general</td>
+            <td class="num">9</td>
+            <td class="num">1</td>
+            <td class="num warning">4</td>
+            <td class="num">648</td>
+          </tr>
+          <tr>
+            <td class="num">4</td>
+            <td><span class="id"
+                data-copy="529df523-e1d7-4308-94f9-e4e3713c4183">529df523-e1d7-4308-94f9-e4e3713c4183</span></td>
+            <td class="strong">Seminovos</td>
+            <td>general</td>
+            <td class="num">30</td>
+            <td class="num">0</td>
+            <td class="num">2</td>
+            <td class="num">11.106</td>
+          </tr>
+          <tr>
+            <td class="num">5</td>
+            <td><span class="id"
+                data-copy="538c97ff-16f5-445b-a0de-295765902b35">538c97ff-16f5-445b-a0de-295765902b35</span></td>
+            <td class="strong">Ofertas Marketplace</td>
+            <td>general</td>
+            <td class="num">34</td>
+            <td class="num">0</td>
+            <td class="num">2</td>
+            <td class="num">587</td>
+          </tr>
+          <tr>
+            <td class="num">6</td>
+            <td><span class="id"
+                data-copy="25e48364-f67e-42e9-913e-e3c5bc7b8946">25e48364-f67e-42e9-913e-e3c5bc7b8946</span></td>
+            <td>Banners</td>
+            <td>general</td>
+            <td class="num">5</td>
+            <td class="num">0</td>
+            <td class="num">2</td>
+            <td class="num">716</td>
+          </tr>
+          <tr>
+            <td class="num">7</td>
+            <td><span class="id"
+                data-copy="221335fa-2fb1-41ee-bfb1-d0ede753d9fd">221335fa-2fb1-41ee-bfb1-d0ede753d9fd</span></td>
+            <td>Ofertas</td>
+            <td>general</td>
+            <td class="num">10</td>
+            <td class="num">0</td>
+            <td class="num">2</td>
+            <td class="num">1.788</td>
+          </tr>
+          <tr>
+            <td class="num">8</td>
+            <td><span class="id"
+                data-copy="07b0f6b2-7f6d-4ca8-85f1-18fc1170e3c6">07b0f6b2-7f6d-4ca8-85f1-18fc1170e3c6</span></td>
+            <td>Vendas Diretas</td>
+            <td>general</td>
+            <td class="num">13</td>
+            <td class="num">0</td>
+            <td class="num">2</td>
+            <td class="num">1.227</td>
+          </tr>
+          <tr>
+            <td class="num">9</td>
+            <td><span class="id"
+                data-copy="5beed473-caa1-49c1-bad2-7e207a963398">5beed473-caa1-49c1-bad2-7e207a963398</span></td>
+            <td>Acessórios</td>
+            <td>general</td>
+            <td class="num">8</td>
+            <td class="num">0</td>
+            <td class="num">2</td>
+            <td class="num">1.152</td>
+          </tr>
+          <tr>
+            <td class="num">10</td>
+            <td><span class="id"
+                data-copy="b8e6b689-f505-4dbc-ae0a-709415e26be2">b8e6b689-f505-4dbc-ae0a-709415e26be2</span></td>
+            <td>Peças</td>
+            <td>general</td>
+            <td class="num">11</td>
+            <td class="num">0</td>
+            <td class="num">2</td>
+            <td class="num">742</td>
+          </tr>
+          <tr>
+            <td class="num">11</td>
+            <td><span class="id"
+                data-copy="5348f27a-0f32-40f7-9b3c-aef3a0e21dd2">5348f27a-0f32-40f7-9b3c-aef3a0e21dd2</span></td>
+            <td>Serviços</td>
+            <td>general</td>
+            <td class="num">9</td>
+            <td class="num">0</td>
+            <td class="num">2</td>
+            <td class="num">771</td>
+          </tr>
+          <tr>
+            <td class="num">12</td>
+            <td><span class="id"
+                data-copy="d3bf3225-75a3-4127-89fa-0960281787ad">d3bf3225-75a3-4127-89fa-0960281787ad</span></td>
+            <td>Cartas de Crédito</td>
+            <td>general</td>
+            <td class="num">6</td>
+            <td class="num">0</td>
+            <td class="num">2</td>
+            <td class="num">750</td>
+          </tr>
+          <tr>
+            <td class="num">13</td>
+            <td><span class="id"
+                data-copy="753d1903-83cf-4c75-ad18-e9cb56853a8b">753d1903-83cf-4c75-ad18-e9cb56853a8b</span></td>
+            <td>Blog</td>
+            <td>general</td>
+            <td class="num">6</td>
+            <td class="num">0</td>
+            <td class="num">2</td>
+            <td class="num">999</td>
+          </tr>
+          <tr>
+            <td class="num">14</td>
+            <td><span class="id"
+                data-copy="25c72ec1-8f3b-48d4-98ef-7acabb81daaf">25c72ec1-8f3b-48d4-98ef-7acabb81daaf</span></td>
+            <td>Depoimentos</td>
+            <td>general</td>
+            <td class="num">8</td>
+            <td class="num">0</td>
+            <td class="num">2</td>
+            <td class="num">1.051</td>
+          </tr>
+          <tr>
+            <td class="num">15</td>
+            <td><span class="id"
+                data-copy="9c8c09e5-b4f0-4cfb-92f4-8f504e97aa35">9c8c09e5-b4f0-4cfb-92f4-8f504e97aa35</span></td>
+            <td>Lifestyle</td>
+            <td>general</td>
+            <td class="num">8</td>
+            <td class="num">0</td>
+            <td class="num">2</td>
+            <td class="num">31</td>
+          </tr>
+          <tr>
+            <td class="num">16</td>
+            <td><span class="id"
+                data-copy="8e0a3fa5-c7a1-440a-8d86-098d96b662e1">8e0a3fa5-c7a1-440a-8d86-098d96b662e1</span></td>
+            <td>Assinaturas</td>
+            <td>general</td>
+            <td class="num">8</td>
+            <td class="num">0</td>
+            <td class="num">2</td>
+            <td class="num">5</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="callout warning">
+      <div class="callout-title">Modelo e Versao de Veiculo são os hubs caros</div>
+      <p><strong>Modelo</strong> (29 campos + 5 relações) e <strong>Versao de Veiculo</strong> (43 campos + 4 relações)
+        custam <strong>7–8 queries OpenSearch por request pública</strong>. Como ambos vivem em <code>general</code>,
+        consumida por todas as contas do hosting, <strong>toda otimização neles beneficia o parque inteiro</strong>.</p>
+    </div>
+
+    <h2 id="sitemap">Volume de entries publicadas por conta (top 15)</h2>
+    <p>Proxy do custo de crawl de sitemap: <code>ceil(entries / 100)</code> = páginas do sitemap que um bot precisa
+      buscar.</p>
+
+    <div class="chart-wrapper tall"><canvas id="chartSitemapCost"></canvas></div>
+
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>#</th>
+            <th>accountId (cms)</th>
+            <th>Cliente</th>
+            <th style="text-align:right;">Entries publicadas</th>
+            <th style="text-align:right;">Páginas sitemap</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr class="warning">
+            <td class="num">1</td>
+            <td><span class="id" data-copy="general">general</span></td>
+            <td class="dim">(compartilhada · não é UUID)</td>
+            <td class="num danger">14.649</td>
+            <td class="num danger">147</td>
+          </tr>
+          <tr>
+            <td class="num">2</td>
+            <td><span class="id"
+                data-copy="0d745691-25fe-4b76-ae43-868c4fe7e94e">0d745691-25fe-4b76-ae43-868c4fe7e94e</span></td>
+            <td class="strong">Grupo Parvi</td>
+            <td class="num">2.350</td>
+            <td class="num">24</td>
+          </tr>
+          <tr>
+            <td class="num">3</td>
+            <td><span class="id"
+                data-copy="703d2f91-1a5c-4dc1-a742-ae5c7eb7df89">703d2f91-1a5c-4dc1-a742-ae5c7eb7df89</span></td>
+            <td class="strong">Grupo Automob</td>
+            <td class="num">2.161</td>
+            <td class="num">22</td>
+          </tr>
+          <tr>
+            <td class="num">4</td>
+            <td><span class="id"
+                data-copy="792bb517-969b-4c15-99ea-82e3aea20720">792bb517-969b-4c15-99ea-82e3aea20720</span></td>
+            <td class="strong">McLarty Maia</td>
+            <td class="num">1.549</td>
+            <td class="num">16</td>
+          </tr>
+          <tr>
+            <td class="num">5</td>
+            <td><span class="id"
+                data-copy="0a3a8770-0f07-4c14-9e56-79b2b53cd560">0a3a8770-0f07-4c14-9e56-79b2b53cd560</span></td>
+            <td class="strong">GRUPO SAGA</td>
+            <td class="num">987</td>
+            <td class="num">10</td>
+          </tr>
+          <tr>
+            <td class="num">6</td>
+            <td><span class="id"
+                data-copy="32f5dc69-9b8c-40a1-b6a8-7ad7de74f2db">32f5dc69-9b8c-40a1-b6a8-7ad7de74f2db</span></td>
+            <td class="strong">Itavema</td>
+            <td class="num">624</td>
+            <td class="num">7</td>
+          </tr>
+          <tr>
+            <td class="num">7</td>
+            <td><span class="id"
+                data-copy="7d254f91-343e-4678-9b30-ff40088a6d34">7d254f91-343e-4678-9b30-ff40088a6d34</span></td>
+            <td class="strong">Grupo HBW</td>
+            <td class="num">545</td>
+            <td class="num">6</td>
+          </tr>
+          <tr>
+            <td class="num">8</td>
+            <td><span class="id"
+                data-copy="c1f2741a-4317-413d-83b2-575570dc4d7e">c1f2741a-4317-413d-83b2-575570dc4d7e</span></td>
+            <td class="strong">Grupo Provence</td>
+            <td class="num">454</td>
+            <td class="num">5</td>
+          </tr>
+          <tr>
+            <td class="num">9</td>
+            <td><span class="id"
+                data-copy="70002f14-94ef-4af7-8685-817174bfae60">70002f14-94ef-4af7-8685-817174bfae60</span></td>
+            <td class="strong">Grupo Jorlan</td>
+            <td class="num">439</td>
+            <td class="num">5</td>
+          </tr>
+          <tr>
+            <td class="num">10</td>
+            <td><span class="id"
+                data-copy="4b530e1b-f5fb-4204-b0e1-3cacf5abc1ca">4b530e1b-f5fb-4204-b0e1-3cacf5abc1ca</span></td>
+            <td class="strong">Natal Auto Shopping</td>
+            <td class="num">414</td>
+            <td class="num">5</td>
+          </tr>
+          <tr>
+            <td class="num">11</td>
+            <td><span class="id"
+                data-copy="f32c0509-1faf-4d6c-b8fb-8b5e8987d4d3">f32c0509-1faf-4d6c-b8fb-8b5e8987d4d3</span></td>
+            <td class="strong">Bari Automóveis</td>
+            <td class="num">357</td>
+            <td class="num">4</td>
+          </tr>
+          <tr>
+            <td class="num">12</td>
+            <td><span class="id"
+                data-copy="38ef941b-d788-436a-a532-64f8d1fcc0cd">38ef941b-d788-436a-a532-64f8d1fcc0cd</span></td>
+            <td class="strong">Grupo Motoca</td>
+            <td class="num">296</td>
+            <td class="num">3</td>
+          </tr>
+          <tr>
+            <td class="num">13</td>
+            <td><span class="id"
+                data-copy="f7825b7c-5120-4a30-ae87-f50f1db7101a">f7825b7c-5120-4a30-ae87-f50f1db7101a</span></td>
+            <td class="strong">Grupo Caminho</td>
+            <td class="num">295</td>
+            <td class="num">3</td>
+          </tr>
+          <tr>
+            <td class="num">14</td>
+            <td><span class="id"
+                data-copy="4cf9b174-dfde-4634-8c6e-7b5207a8daa9">4cf9b174-dfde-4634-8c6e-7b5207a8daa9</span></td>
+            <td class="strong">AKTA MOTORS</td>
+            <td class="num">259</td>
+            <td class="num">3</td>
+          </tr>
+          <tr>
+            <td class="num">15</td>
+            <td><span class="id"
+                data-copy="0e4f16ae-2843-4d00-ac7f-c53f58c92c9b">0e4f16ae-2843-4d00-ac7f-c53f58c92c9b</span></td>
+            <td class="strong">Grupo Honda Mototrail</td>
+            <td class="num">245</td>
+            <td class="num">3</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <p class="hint">A conta <code>general</code> concentra <strong>63% de todas as entries publicadas do CMS</strong>
+      (14.649 de 34.222). Lista completa em <a
+        href="./analise-volume/cms/c07-sitemap-cost-per-account.csv">c07-sitemap-cost-per-account.csv</a>.</p>
+
+    <h2 id="canais-densos">Canais mais densos em blocos dinâmicos (top 25 por p95)</h2>
+    <p>Canais com maior nº de blocos dinâmicos por página no pior caso. Nome do canal + conta.</p>
+
+    <div class="chart-wrapper xtall"><canvas id="chartChannelDensity"></canvas></div>
+
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>#</th>
+            <th>channelId</th>
+            <th>Canal</th>
+            <th>Conta</th>
+            <th style="text-align:right;">Páginas</th>
+            <th style="text-align:right;">Média</th>
+            <th style="text-align:right;">p95</th>
+            <th style="text-align:right;">Máx</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr class="warning">
+            <td class="num">1</td>
+            <td><span class="id"
+                data-copy="6b792ca4-aa1e-49a2-9e67-ef368ce40333">6b792ca4-aa1e-49a2-9e67-ef368ce40333</span></td>
+            <td class="strong">Audi Maceió</td>
+            <td>Grupo Gama</td>
+            <td class="num">42</td>
+            <td class="num">2,31</td>
+            <td class="num warning">8,8</td>
+            <td class="num">10</td>
+          </tr>
+          <tr class="warning">
+            <td class="num">2</td>
+            <td><span class="id"
+                data-copy="e0ee560d-49b6-4ab9-81b6-14fa2fdf9326">e0ee560d-49b6-4ab9-81b6-14fa2fdf9326</span></td>
+            <td class="strong">Sorana Audi</td>
+            <td>Grupo Sorana</td>
+            <td class="num">42</td>
+            <td class="num">2,31</td>
+            <td class="num warning">8,8</td>
+            <td class="num">10</td>
+          </tr>
+          <tr class="warning">
+            <td class="num">3</td>
+            <td><span class="id"
+                data-copy="e95eed1c-936f-4270-8dc6-9cb879c73235">e95eed1c-936f-4270-8dc6-9cb879c73235</span></td>
+            <td class="strong">Audi Aracaju</td>
+            <td>Grupo Gama</td>
+            <td class="num">42</td>
+            <td class="num">2,31</td>
+            <td class="num warning">8,8</td>
+            <td class="num">10</td>
+          </tr>
+          <tr class="warning">
+            <td class="num">4</td>
+            <td><span class="id"
+                data-copy="20203397-04c8-48b0-bc0e-d46714ea480b">20203397-04c8-48b0-bc0e-d46714ea480b</span></td>
+            <td class="strong">Audi Center Campo Grande</td>
+            <td>Grupo Autobel</td>
+            <td class="num">43</td>
+            <td class="num">2,26</td>
+            <td class="num warning">8,7</td>
+            <td class="num">10</td>
+          </tr>
+          <tr class="warning">
+            <td class="num">5</td>
+            <td><span class="id"
+                data-copy="4385528c-b47e-436d-a011-a2e2f9fc6277">4385528c-b47e-436d-a011-a2e2f9fc6277</span></td>
+            <td class="strong">Audi Center Cuiabá</td>
+            <td>Grupo Autobel</td>
+            <td class="num">43</td>
+            <td class="num">2,26</td>
+            <td class="num warning">8,7</td>
+            <td class="num">10</td>
+          </tr>
+          <tr>
+            <td class="num">6</td>
+            <td><span class="id"
+                data-copy="9efcec8b-2df4-42a2-be10-614212148cfa">9efcec8b-2df4-42a2-be10-614212148cfa</span></td>
+            <td class="strong">Hyundai Parvi</td>
+            <td>Grupo Parvi</td>
+            <td class="num">26</td>
+            <td class="num">2,69</td>
+            <td class="num warning">8,0</td>
+            <td class="num">9</td>
+          </tr>
+          <tr>
+            <td class="num">7</td>
+            <td><span class="id"
+                data-copy="6a54d033-60de-4065-898a-8fa1f957df08">6a54d033-60de-4065-898a-8fa1f957df08</span></td>
+            <td class="strong">Meu Flua</td>
+            <td>Meu Flua</td>
+            <td class="num">4</td>
+            <td class="num">3,25</td>
+            <td class="num warning">7,9</td>
+            <td class="num">9</td>
+          </tr>
+          <tr>
+            <td class="num">8</td>
+            <td><span class="id"
+                data-copy="dc06f749-98bc-4022-9aaa-867b607f92f6">dc06f749-98bc-4022-9aaa-867b607f92f6</span></td>
+            <td class="strong">BMW Motorrad Barigüi</td>
+            <td>Grupo Barigüi</td>
+            <td class="num">33</td>
+            <td class="num">2,85</td>
+            <td class="num warning">7,8</td>
+            <td class="num">12</td>
+          </tr>
+          <tr>
+            <td class="num">9</td>
+            <td><span class="id"
+                data-copy="d74018d3-7ff6-4a30-aee1-6a11c02d7d3c">d74018d3-7ff6-4a30-aee1-6a11c02d7d3c</span></td>
+            <td class="strong">BEXP - Audi</td>
+            <td>BEXP</td>
+            <td class="num">30</td>
+            <td class="num">2,50</td>
+            <td class="num warning">7,6</td>
+            <td class="num">12</td>
+          </tr>
+          <tr>
+            <td class="num">10</td>
+            <td><span class="id"
+                data-copy="e2e2eff8-2054-4fca-8d7e-2413fdf90fee">e2e2eff8-2054-4fca-8d7e-2413fdf90fee</span></td>
+            <td class="strong">SAGA BMW Motorrad</td>
+            <td>GRUPO SAGA</td>
+            <td class="num">32</td>
+            <td class="num">2,81</td>
+            <td class="num warning">7,5</td>
+            <td class="num">12</td>
+          </tr>
+          <tr>
+            <td class="num">11</td>
+            <td><span class="id"
+                data-copy="4b499d63-8ba8-4a0c-a5f2-457ee0c06f1a">4b499d63-8ba8-4a0c-a5f2-457ee0c06f1a</span></td>
+            <td class="strong">SAGA Mitsubishi</td>
+            <td>GRUPO SAGA</td>
+            <td class="num">32</td>
+            <td class="num">2,44</td>
+            <td class="num warning">7,5</td>
+            <td class="num">12</td>
+          </tr>
+          <tr>
+            <td class="num">12</td>
+            <td><span class="id"
+                data-copy="5c36e476-dc60-4fde-8206-711b54af499f">5c36e476-dc60-4fde-8206-711b54af499f</span></td>
+            <td class="strong">Autokraft | Motorrad</td>
+            <td>Autokraft</td>
+            <td class="num">38</td>
+            <td class="num">2,47</td>
+            <td class="num warning">7,3</td>
+            <td class="num">12</td>
+          </tr>
+          <tr>
+            <td class="num">13</td>
+            <td><span class="id"
+                data-copy="248ab186-9f92-4894-aa14-060ff4726431">248ab186-9f92-4894-aa14-060ff4726431</span></td>
+            <td class="strong">Andreta Mitsubishi</td>
+            <td>Grupo Andreta</td>
+            <td class="num">31</td>
+            <td class="num">2,48</td>
+            <td class="num warning">7,0</td>
+            <td class="num">12</td>
+          </tr>
+          <tr>
+            <td class="num">14</td>
+            <td><span class="id"
+                data-copy="ca7e1272-f875-44a6-b484-191785deb92c">ca7e1272-f875-44a6-b484-191785deb92c</span></td>
+            <td class="strong">SAGA BMW</td>
+            <td>GRUPO SAGA</td>
+            <td class="num">31</td>
+            <td class="num">2,35</td>
+            <td class="num warning">7,0</td>
+            <td class="num">12</td>
+          </tr>
+          <tr>
+            <td class="num">15</td>
+            <td><span class="id"
+                data-copy="61f3f314-7669-4e52-920e-4f48146f616d">61f3f314-7669-4e52-920e-4f48146f616d</span></td>
+            <td class="strong">COFIPE Iveco</td>
+            <td>COFIPE IVECO</td>
+            <td class="num">32</td>
+            <td class="num">2,25</td>
+            <td class="num warning">6,9</td>
+            <td class="num">10</td>
+          </tr>
+          <tr>
+            <td class="num">16</td>
+            <td><span class="id"
+                data-copy="5b224212-17bd-48f2-909a-a64f979b7e0c">5b224212-17bd-48f2-909a-a64f979b7e0c</span></td>
+            <td class="strong">SAGA Toyota</td>
+            <td>GRUPO SAGA</td>
+            <td class="num">24</td>
+            <td class="num">2,58</td>
+            <td class="num warning">6,8</td>
+            <td class="num">9</td>
+          </tr>
+          <tr>
+            <td class="num">17</td>
+            <td><span class="id"
+                data-copy="eb314393-3b80-404c-8101-b523e8b0dcee">eb314393-3b80-404c-8101-b523e8b0dcee</span></td>
+            <td class="strong">BYD Guiauto | Novo Site</td>
+            <td>Grupo Guiauto</td>
+            <td class="num">33</td>
+            <td class="num">2,27</td>
+            <td class="num warning">6,8</td>
+            <td class="num">12</td>
+          </tr>
+          <tr>
+            <td class="num">18</td>
+            <td><span class="id"
+                data-copy="309bff16-114a-49c4-a88e-31804a832d26">309bff16-114a-49c4-a88e-31804a832d26</span></td>
+            <td class="strong">SAGA BYD</td>
+            <td>GRUPO SAGA</td>
+            <td class="num">33</td>
+            <td class="num">2,27</td>
+            <td class="num warning">6,8</td>
+            <td class="num">12</td>
+          </tr>
+          <tr>
+            <td class="num">19</td>
+            <td><span class="id"
+                data-copy="ec3ffa27-4f78-4c68-8dc0-bdfe70d19aad">ec3ffa27-4f78-4c68-8dc0-bdfe70d19aad</span></td>
+            <td class="strong">Toyota Toyolex</td>
+            <td>Grupo Parvi</td>
+            <td class="num">26</td>
+            <td class="num">2,38</td>
+            <td class="num warning">6,8</td>
+            <td class="num">9</td>
+          </tr>
+          <tr>
+            <td class="num">20</td>
+            <td><span class="id"
+                data-copy="8bd03893-6dfe-4a06-98fa-cb5231e6044f">8bd03893-6dfe-4a06-98fa-cb5231e6044f</span></td>
+            <td class="strong">BYD | Grupo HBW</td>
+            <td>Grupo HBW</td>
+            <td class="num">35</td>
+            <td class="num">2,14</td>
+            <td class="num warning">6,6</td>
+            <td class="num">12</td>
+          </tr>
+          <tr>
+            <td class="num">21</td>
+            <td><span class="id"
+                data-copy="4fd49f08-8878-487f-8b5c-1ad4770d6901">4fd49f08-8878-487f-8b5c-1ad4770d6901</span></td>
+            <td class="strong">BYD | Grupo Viamar</td>
+            <td>Grupo Viamar</td>
+            <td class="num">35</td>
+            <td class="num">2,14</td>
+            <td class="num warning">6,6</td>
+            <td class="num">12</td>
+          </tr>
+          <tr>
+            <td class="num">22</td>
+            <td><span class="id"
+                data-copy="e50b1422-f336-4c6c-864b-eb5ce259ab50">e50b1422-f336-4c6c-864b-eb5ce259ab50</span></td>
+            <td class="strong">Thai Toyota</td>
+            <td>Grupo EBD</td>
+            <td class="num">31</td>
+            <td class="num">2,00</td>
+            <td class="num warning">6,5</td>
+            <td class="num">9</td>
+          </tr>
+          <tr>
+            <td class="num">23</td>
+            <td><span class="id"
+                data-copy="7c116a27-22a4-435e-8d72-ec4b2eefc11f">7c116a27-22a4-435e-8d72-ec4b2eefc11f</span></td>
+            <td class="strong">Pinauto | BYD</td>
+            <td>Pinauto</td>
+            <td class="num">32</td>
+            <td class="num">2,31</td>
+            <td class="num warning">6,5</td>
+            <td class="num">12</td>
+          </tr>
+          <tr>
+            <td class="num">24</td>
+            <td><span class="id"
+                data-copy="1474308e-7cfd-4ede-a7f9-8bd4845ad58f">1474308e-7cfd-4ede-a7f9-8bd4845ad58f</span></td>
+            <td class="strong">Doura Motors Toyota</td>
+            <td>Saldanha Moreira (Golden Motors)</td>
+            <td class="num">32</td>
+            <td class="num">1,94</td>
+            <td class="num warning">6,5</td>
+            <td class="num">9</td>
+          </tr>
+          <tr>
+            <td class="num">25</td>
+            <td><span class="id"
+                data-copy="3fa030e8-a094-42e1-80b6-c019d747f39f">3fa030e8-a094-42e1-80b6-c019d747f39f</span></td>
+            <td class="strong">Isar Motors BMW Motorrad</td>
+            <td>Grupo EBD</td>
+            <td class="num">33</td>
+            <td class="num">2,58</td>
+            <td class="num warning">6,4</td>
+            <td class="num">11</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="callout">
+      <div class="callout-title">Templates repetidas</div>
+      <p>Os canais Audi (Sorana, Aracaju, Maceió, Campo Grande, Cuiabá) têm valores <strong>quase idênticos</strong> —
+        compartilham a mesma template. Mesmo padrão em BMW Motorrad, BYD, Toyota. Isso é <strong>bom sinal para
+          otimização em batch</strong>: consertar uma template ajuda vários clientes de uma vez.</p>
+    </div>
+
+    <h2 id="anomalias">Anomalias e pontos de atenção</h2>
+
+    <ul>
+      <li><strong>143 contas hosting sem match no general-api</strong> (~20% dos canais). Provavelmente contas do
+        monolito antigo que não foram migradas. Se esses canais estão ativos, o admin pode não conseguir mostrá-los
+        direito.</li>
+      <li><strong>0 content types com SITE_STATUS</strong> — bom, esse amplificador (branch extra em
+        <code>getPublicEntry</code>) não está triggando em produção.</li>
+      <li><strong>0 API keys com scopes PUBLIC+READ pelo filtro do C09</strong> — 3.205 API keys existem mas nenhuma
+        bate no filtro <code>ARRAY['PUBLIC'] AND ARRAY['READ']</code>. Scopes gravados de forma diferente da assumida
+        pela query. O renderer autentica (senão nada funcionaria), então precisa revisar como scopes aparecem no banco.
+      </li>
+      <li><strong>Só 4 contas no CMS vs 360 no hosting</strong> — <code>general</code> concentra 16 dos 20 content types
+        e 63% das entries publicadas. Otimização em <code>general</code> = otimização para o parque inteiro.</li>
+      <li><strong>Templates Audi/BMW/BYD/Toyota</strong> aparecem em vários canais com valores idênticos (SAGA tem 5
+        canais no top 25). Um refactor de template beneficia N canais simultaneamente.</li>
+      <li><strong>Cauda extrema:</strong> 96 páginas com 12 blocos + 37 com 13. Os canais mais densos são todos de
+        grupos automotivos — grandes projetos com muitos blocos dinâmicos combinados.</li>
+    </ul>
+
+    <div class="footer">
+      <p><strong>Reproduzir os dados:</strong></p>
+      <div
+        style="font-family: 'JetBrains Mono', monospace; background: var(--bg); padding: 12px 16px; border-radius: 6px; color: var(--text-dim); margin: 8px 0;">
+        export HOSTING_DATABASE_URL="..."<br>export CMS_DATABASE_URL="..."<br>export
+        GENERAL_DATABASE_URL="..."<br>./docs/analise-volume/run.sh</div>
+
+      <p style="margin-top: 20px;"><strong>Documentos relacionados:</strong></p>
+      <ul>
+        <li><a href="./analise-pageview-para-cms.html">Análise conceitual do fluxo pageview → CMS</a></li>
+        <li><a href="./plano-queries-volume.md">Plano de queries (SELECT puro, read-only)</a></li>
+        <li><a href="./arquitetura-blocos-dinamicos-fanout.md">Arquitetura: por que blocos idênticos duplicam</a></li>
+        <li><a href="./bonsai-investigation/04-diagnostico-e-plano-acao.md">Diagnóstico Bonsai completo</a></li>
+        <li><a href="./analise-volume/">CSVs brutos em docs/analise-volume/</a></li>
+      </ul>
+    </div>
+
+  </div>
+
+  <div class="toast" id="toast">ID copiado</div>
+
+  <script>
+    const toast = document.getElementById('toast');
+    let toastTimer;
+    document.querySelectorAll('.id[data-copy]').forEach((el) => {
+      el.addEventListener('click', async () => {
+        const id = el.dataset.copy;
+        try {
+          await navigator.clipboard.writeText(id);
+          el.classList.add('copied');
+          setTimeout(() => el.classList.remove('copied'), 800);
+          toast.textContent = `copiado · ${id.slice(0, 20)}${id.length > 20 ? '…' : ''}`;
+          toast.classList.add('show');
+          clearTimeout(toastTimer);
+          toastTimer = setTimeout(() => toast.classList.remove('show'), 1400);
+        } catch (err) {
+          const range = document.createRange();
+          range.selectNode(el);
+          window.getSelection().removeAllRanges();
+          window.getSelection().addRange(range);
+        }
+      });
+    });
+
+    Chart.defaults.color = '#a0a8b0';
+    Chart.defaults.borderColor = '#2c3540';
+    Chart.defaults.font.family = '-apple-system, BlinkMacSystemFont, Segoe UI, Roboto, sans-serif';
+
+    // Distribuição de blocos por página
+    new Chart(document.getElementById('chartDistDynamic'), {
+      type: 'bar',
+      data: {
+        labels: ['0', '1', '2', '3', '4', '5', '6', '7', '8', '9', '10', '11', '12', '13'],
+        datasets: [{
+          label: 'Páginas',
+          data: [4544, 4491, 1242, 1012, 829, 451, 201, 120, 51, 115, 48, 4, 96, 37],
+          backgroundColor: (ctx) => {
+            const val = ctx.parsed?.y ?? 0;
+            if (val >= 1000) return '#4ade80';
+            if (val >= 200) return '#38bdf8';
+            if (val >= 50) return '#fbbf24';
+            return '#f87171';
+          },
+          borderRadius: 6
+        }]
+      },
+      options: {
+        responsive: true, maintainAspectRatio: false,
+        plugins: {
+          legend: { display: false },
+          tooltip: {
+            callbacks: {
+              title: (items) => `${items[0].label} blocos dinâmicos`,
+              label: (ctx) => `${ctx.raw.toLocaleString('pt-BR')} páginas`
+            }
+          }
+        },
+        scales: {
+          x: {
+            title: { display: true, text: 'nº de blocos dinâmicos na página', color: '#a0a8b0' },
+            grid: { display: false }, ticks: { color: '#e6e6e6' }
+          },
+          y: { type: 'logarithmic', grid: { color: '#2c3540' }, ticks: { color: '#a0a8b0' } }
+        }
+      }
+    });
+
+    // Tipos de bloco
+    new Chart(document.getElementById('chartBlockTypes'), {
+      type: 'bar',
+      data: {
+        labels: [
+          'DynamicCarouselAndGrid', 'DynamicList', 'DynamicFormWithGallery',
+          'MediaSectionDynamic', 'DynamicGallery', 'RichTextDynamic',
+          'SpecificationsDynamic', 'VehicleItemsDynamic', 'DynamicCarousel',
+          'BreadcrumbDynamic', 'UnitInfo', 'DynamicBanner', 'Viewer360',
+          'VersionColorSelector', 'CodeBlockDynamic'
+        ],
+        datasets: [
+          {
+            label: 'Ocorrências totais',
+            data: [8177, 4207, 2536, 2029, 1181, 921, 642, 489, 282, 196, 191, 146, 113, 93, 18],
+            backgroundColor: '#f87171', borderRadius: 4
+          },
+          {
+            label: 'Páginas usando',
+            data: [4799, 3823, 2516, 958, 1176, 921, 641, 489, 279, 196, 118, 146, 113, 92, 18],
+            backgroundColor: '#38bdf8', borderRadius: 4
+          }
+        ]
+      },
+      options: {
+        indexAxis: 'y', responsive: true, maintainAspectRatio: false,
+        plugins: { legend: { position: 'top', labels: { color: '#e6e6e6' } } },
+        scales: {
+          x: { beginAtZero: true, grid: { color: '#2c3540' }, ticks: { color: '#a0a8b0' } },
+          y: { grid: { display: false }, ticks: { color: '#e6e6e6' } }
+        }
+      }
+    });
+
+    // Top contas por canais (só PROD + não mapeadas)
+    new Chart(document.getElementById('chartTopAccountsChannels'), {
+      type: 'bar',
+      data: {
+        labels: [
+          'Grupo Automob', 'Grupo Parvi', 'Itavema', 'Grupo Via1', 'Grupo Barigüi',
+          '(não mapeada)', 'GRUPO SAGA', 'Grupo Enzo', 'AutoForce', 'Grupo Timber',
+          'Grupo Viamar', '(não mapeada)', '(não mapeada)', '(não mapeada)', '(não mapeada)',
+          'Disnove Yamaha', 'McLarty Maia', 'Grupo GNC', 'Grupo Caminho', 'Grupo T-line',
+          'Marajó', 'Carmais', '(não mapeada)', 'PG Prime', 'Grupo Andreta'
+        ],
+        datasets: [{
+          label: 'Canais',
+          data: [20, 18, 16, 14, 13, 11, 11, 11, 11, 10, 10, 9, 9, 8, 8, 8, 8, 8, 6, 6, 6, 6, 6, 6, 6],
+          backgroundColor: '#38bdf8',
+          borderRadius: 4
+        }]
+      },
+      options: {
+        responsive: true, maintainAspectRatio: false,
+        plugins: {
+          legend: { display: false },
+          tooltip: { callbacks: { label: (ctx) => `${ctx.raw} canais` } }
+        },
+        scales: {
+          x: { grid: { display: false }, ticks: { color: '#e6e6e6', maxRotation: 60, minRotation: 45, font: { size: 9 } } },
+          y: { beginAtZero: true, grid: { color: '#2c3540' }, ticks: { color: '#a0a8b0' } }
+        }
+      }
+    });
+
+    // Content types por fan-out
+    new Chart(document.getElementById('chartCtFanout'), {
+      type: 'bar',
+      data: {
+        labels: ['Modelo', 'Versao de Veiculo', 'Consórcios', 'Banners', 'Seminovos',
+          'Ofertas Marketplace', 'Ofertas', 'Vendas Diretas', 'Acessórios', 'Peças',
+          'Serviços', 'Cartas de Crédito', 'Blog', 'Depoimentos', 'Lifestyle', 'Assinaturas'],
+        datasets: [
+          {
+            label: 'Campos',
+            data: [29, 43, 9, 5, 30, 34, 10, 13, 8, 11, 9, 6, 6, 8, 8, 8],
+            backgroundColor: '#a0a8b0', borderRadius: 4
+          },
+          {
+            label: 'Relações',
+            data: [5, 4, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+            backgroundColor: '#c084fc', borderRadius: 4
+          },
+          {
+            label: 'OS queries pior caso',
+            data: [8, 7, 4, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2],
+            backgroundColor: '#f87171', borderRadius: 4
+          }
+        ]
+      },
+      options: {
+        responsive: true, maintainAspectRatio: false,
+        plugins: { legend: { position: 'top', labels: { color: '#e6e6e6' } } },
+        scales: {
+          x: {
+            grid: { display: false },
+            ticks: { color: '#e6e6e6', maxRotation: 60, minRotation: 45, font: { size: 10 } }
+          },
+          y: { beginAtZero: true, grid: { color: '#2c3540' }, ticks: { color: '#a0a8b0' } }
+        }
+      }
+    });
+
+    // Sitemap cost
+    new Chart(document.getElementById('chartSitemapCost'), {
+      type: 'bar',
+      data: {
+        labels: ['general', 'Grupo Parvi', 'Grupo Automob', 'McLarty Maia', 'GRUPO SAGA',
+          'Itavema', 'Grupo HBW', 'Grupo Provence', 'Grupo Jorlan', 'Natal Auto Shopping',
+          'Bari Automóveis', 'Grupo Motoca', 'Grupo Caminho', 'AKTA MOTORS', 'Honda Mototrail'],
+        datasets: [
+          {
+            label: 'Entries publicadas',
+            data: [14649, 2350, 2161, 1549, 987, 624, 545, 454, 439, 414, 357, 296, 295, 259, 245],
+            backgroundColor: '#38bdf8', borderRadius: 4, yAxisID: 'y'
+          },
+          {
+            label: 'Páginas de sitemap',
+            data: [147, 24, 22, 16, 10, 7, 6, 5, 5, 5, 4, 3, 3, 3, 3],
+            backgroundColor: '#fbbf24', borderRadius: 4, yAxisID: 'y1'
+          }
+        ]
+      },
+      options: {
+        responsive: true, maintainAspectRatio: false,
+        plugins: { legend: { position: 'top', labels: { color: '#e6e6e6' } } },
+        scales: {
+          x: { grid: { display: false }, ticks: { color: '#e6e6e6', maxRotation: 60, minRotation: 45, font: { size: 10 } } },
+          y: {
+            type: 'linear', position: 'left', beginAtZero: true,
+            grid: { color: '#2c3540' }, ticks: { color: '#38bdf8' },
+            title: { display: true, text: 'Entries publicadas', color: '#38bdf8' }
+          },
+          y1: {
+            type: 'linear', position: 'right', beginAtZero: true,
+            grid: { display: false }, ticks: { color: '#fbbf24' },
+            title: { display: true, text: 'Páginas de sitemap', color: '#fbbf24' }
+          }
+        }
+      }
+    });
+
+    // Canais densos
+    new Chart(document.getElementById('chartChannelDensity'), {
+      type: 'bar',
+      data: {
+        labels: ['Audi Maceió', 'Sorana Audi', 'Audi Aracaju', 'Audi CG', 'Audi Cuiabá',
+          'Hyundai Parvi', 'Meu Flua', 'BMW Motorrad Barigüi', 'BEXP Audi',
+          'SAGA BMW Motorrad', 'SAGA Mitsubishi', 'Autokraft Motorrad',
+          'Andreta Mitsubishi', 'SAGA BMW', 'COFIPE Iveco', 'SAGA Toyota',
+          'BYD Guiauto', 'SAGA BYD', 'Toyota Toyolex', 'BYD HBW',
+          'BYD Viamar', 'Thai Toyota', 'Pinauto BYD', 'Doura Motors', 'Isar BMW'],
+        datasets: [
+          {
+            label: 'Média blocos/página',
+            data: [2.31, 2.31, 2.31, 2.26, 2.26, 2.69, 3.25, 2.85, 2.5,
+              2.81, 2.44, 2.47, 2.48, 2.35, 2.25, 2.58,
+              2.27, 2.27, 2.38, 2.14, 2.14, 2.0, 2.31, 1.94, 2.58],
+            backgroundColor: '#38bdf8', borderRadius: 4
+          },
+          {
+            label: 'p95 blocos/página',
+            data: [8.8, 8.8, 8.8, 8.7, 8.7, 8.0, 7.9, 7.8, 7.6,
+              7.5, 7.5, 7.3, 7.0, 7.0, 6.9, 6.8,
+              6.8, 6.8, 6.8, 6.6, 6.6, 6.5, 6.5, 6.5, 6.4],
+            backgroundColor: '#f87171', borderRadius: 4
+          }
+        ]
+      },
+      options: {
+        responsive: true, maintainAspectRatio: false,
+        plugins: { legend: { position: 'top', labels: { color: '#e6e6e6' } } },
+        scales: {
+          x: {
+            grid: { display: false },
+            ticks: { color: '#e6e6e6', maxRotation: 60, minRotation: 45, font: { size: 10 } }
+          },
+          y: { beginAtZero: true, grid: { color: '#2c3540' }, ticks: { color: '#a0a8b0' } }
+        }
+      }
+    });
+  </script>
+</body>
+
+</html>

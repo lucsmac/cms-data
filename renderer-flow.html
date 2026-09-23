@@ -1,0 +1,1511 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+
+<head>
+  <meta charset="UTF-8">
+  <title>Como uma pageview vira request no CMS</title>
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@10.9.1/dist/mermaid.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+  <style>
+    :root {
+      --bg: #0f1419;
+      --bg-card: #1a2028;
+      --bg-hover: #242b34;
+      --border: #2c3540;
+      --text: #e6e6e6;
+      --text-dim: #a0a8b0;
+      --accent: #4ade80;
+      --accent-2: #38bdf8;
+      --danger: #f87171;
+      --warning: #fbbf24;
+      --success: #4ade80;
+      --purple: #c084fc;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.6;
+      padding: 40px 20px;
+    }
+
+    .container {
+      max-width: 1200px;
+      margin: 0 auto;
+    }
+
+    h1 {
+      font-size: 32px;
+      margin-bottom: 8px;
+      color: #fff;
+    }
+
+    .subtitle {
+      color: var(--text-dim);
+      font-size: 14px;
+      margin-bottom: 40px;
+      padding-bottom: 20px;
+      border-bottom: 1px solid var(--border);
+    }
+
+    h2 {
+      font-size: 22px;
+      margin: 48px 0 20px;
+      color: #fff;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    h2::before {
+      content: '';
+      display: inline-block;
+      width: 4px;
+      height: 20px;
+      background: var(--accent);
+      border-radius: 2px;
+    }
+
+    h3 {
+      font-size: 18px;
+      margin: 24px 0 12px;
+      color: #fff;
+    }
+
+    h4 {
+      font-size: 15px;
+      margin: 16px 0 8px;
+      color: var(--accent-2);
+    }
+
+    p {
+      margin-bottom: 12px;
+      color: var(--text);
+    }
+
+    code {
+      background: var(--bg-card);
+      padding: 2px 6px;
+      border-radius: 4px;
+      font-family: 'JetBrains Mono', Consolas, monospace;
+      font-size: 13px;
+      color: var(--accent-2);
+    }
+
+    strong {
+      color: #fff;
+    }
+
+    /* KPI cards */
+    .kpi-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+      gap: 16px;
+      margin-bottom: 24px;
+    }
+
+    .kpi {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 20px;
+    }
+
+    .kpi-label {
+      font-size: 12px;
+      color: var(--text-dim);
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      margin-bottom: 8px;
+    }
+
+    .kpi-value {
+      font-size: 30px;
+      font-weight: 700;
+      color: #fff;
+      line-height: 1.1;
+    }
+
+    .kpi-sub {
+      font-size: 13px;
+      color: var(--text-dim);
+      margin-top: 6px;
+    }
+
+    .kpi-value.danger {
+      color: var(--danger);
+    }
+
+    .kpi-value.warning {
+      color: var(--warning);
+    }
+
+    .kpi-value.success {
+      color: var(--success);
+    }
+
+    .kpi-value.purple {
+      color: var(--purple);
+    }
+
+    /* Cards */
+    .card {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 24px;
+      margin-bottom: 20px;
+    }
+
+    /* Tables */
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 16px 0;
+      font-size: 14px;
+    }
+
+    th {
+      text-align: left;
+      padding: 12px;
+      background: var(--bg-hover);
+      color: var(--text-dim);
+      font-weight: 600;
+      text-transform: uppercase;
+      font-size: 11px;
+      letter-spacing: 0.5px;
+      border-bottom: 1px solid var(--border);
+    }
+
+    td {
+      padding: 12px;
+      border-bottom: 1px solid var(--border);
+    }
+
+    tr:last-child td {
+      border-bottom: none;
+    }
+
+    tr:hover td {
+      background: var(--bg-hover);
+    }
+
+    td.num {
+      text-align: right;
+      font-family: 'JetBrains Mono', monospace;
+    }
+
+    td.highlight {
+      color: var(--accent);
+      font-weight: 600;
+    }
+
+    td.strong {
+      font-weight: 600;
+      color: #fff;
+    }
+
+    .row-total {
+      background: rgba(74, 222, 128, 0.08);
+    }
+
+    .row-total td {
+      font-weight: 700;
+    }
+
+    /* Charts */
+    .chart-wrapper {
+      position: relative;
+      height: 320px;
+      margin: 20px 0;
+    }
+
+    .chart-wrapper.tall {
+      height: 400px;
+    }
+
+    /* Mermaid override — melhor contraste no tema escuro */
+    .mermaid {
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 24px;
+      margin: 20px 0;
+      text-align: center;
+    }
+
+    /* Callout */
+    .callout {
+      background: linear-gradient(135deg, rgba(74, 222, 128, 0.1), rgba(56, 189, 248, 0.05));
+      border: 1px solid rgba(74, 222, 128, 0.3);
+      border-radius: 8px;
+      padding: 20px 24px;
+      margin: 20px 0;
+    }
+
+    .callout.warning {
+      background: linear-gradient(135deg, rgba(251, 191, 36, 0.1), rgba(248, 113, 113, 0.05));
+      border-color: rgba(251, 191, 36, 0.3);
+    }
+
+    .callout.danger {
+      background: linear-gradient(135deg, rgba(248, 113, 113, 0.1), rgba(248, 113, 113, 0.05));
+      border-color: rgba(248, 113, 113, 0.3);
+    }
+
+    .callout-title {
+      font-size: 13px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      color: var(--accent);
+      margin-bottom: 8px;
+    }
+
+    .callout.warning .callout-title {
+      color: var(--warning);
+    }
+
+    .callout.danger .callout-title {
+      color: var(--danger);
+    }
+
+    /* Scenario cards */
+    .scenario {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-left: 4px solid var(--accent);
+      border-radius: 8px;
+      padding: 20px 24px;
+      margin-bottom: 16px;
+    }
+
+    .scenario.easy {
+      border-left-color: var(--success);
+    }
+
+    .scenario.medium {
+      border-left-color: var(--accent-2);
+    }
+
+    .scenario.hard {
+      border-left-color: var(--warning);
+    }
+
+    .scenario.worst {
+      border-left-color: var(--danger);
+    }
+
+    .scenario-head {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      flex-wrap: wrap;
+      gap: 12px;
+      margin-bottom: 10px;
+    }
+
+    .scenario-title {
+      font-size: 17px;
+      font-weight: 700;
+      color: #fff;
+    }
+
+    .scenario-subtitle {
+      font-size: 13px;
+      color: var(--text-dim);
+    }
+
+    .scenario-cost {
+      display: inline-flex;
+      gap: 12px;
+      align-items: baseline;
+      background: var(--bg);
+      padding: 8px 14px;
+      border-radius: 6px;
+      border: 1px solid var(--border);
+    }
+
+    .scenario-cost .num {
+      font-size: 22px;
+      font-weight: 700;
+      color: #fff;
+      font-family: 'JetBrains Mono', monospace;
+    }
+
+    .scenario-cost .lbl {
+      font-size: 11px;
+      color: var(--text-dim);
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    .scenario-steps {
+      font-family: 'JetBrains Mono', Consolas, monospace;
+      font-size: 12.5px;
+      background: var(--bg);
+      padding: 14px 16px;
+      border-radius: 6px;
+      color: var(--text-dim);
+      white-space: pre;
+      overflow-x: auto;
+      margin-top: 10px;
+      line-height: 1.5;
+    }
+
+    /* Amplifier ranking */
+    .amp-list {
+      list-style: none;
+    }
+
+    .amp {
+      display: flex;
+      gap: 16px;
+      padding: 14px 16px;
+      background: var(--bg);
+      border-radius: 6px;
+      margin-bottom: 8px;
+      border-left: 3px solid var(--border);
+      align-items: flex-start;
+    }
+
+    .amp.p1 {
+      border-left-color: var(--danger);
+    }
+
+    .amp.p2 {
+      border-left-color: var(--warning);
+    }
+
+    .amp.p3 {
+      border-left-color: var(--accent-2);
+    }
+
+    .amp.p4 {
+      border-left-color: var(--text-dim);
+    }
+
+    .amp-rank {
+      font-size: 18px;
+      font-weight: 700;
+      color: var(--text-dim);
+      min-width: 26px;
+      text-align: center;
+    }
+
+    .amp-body {
+      flex: 1;
+    }
+
+    .amp-title {
+      font-weight: 600;
+      color: #fff;
+      margin-bottom: 3px;
+    }
+
+    .amp-desc {
+      font-size: 13px;
+      color: var(--text-dim);
+    }
+
+    ul {
+      padding-left: 20px;
+      margin-bottom: 12px;
+    }
+
+    li {
+      margin-bottom: 6px;
+      color: var(--text);
+    }
+
+    a {
+      color: var(--accent-2);
+      text-decoration: none;
+    }
+
+    a:hover {
+      text-decoration: underline;
+    }
+
+    /* TOC */
+    .toc {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 20px 28px;
+      margin-bottom: 32px;
+      columns: 2;
+      column-gap: 40px;
+    }
+
+    @media (max-width: 700px) {
+      .toc {
+        columns: 1;
+      }
+    }
+
+    .toc li {
+      margin-bottom: 6px;
+    }
+
+    .toc a {
+      color: var(--text);
+    }
+
+    .toc a:hover {
+      color: var(--accent-2);
+    }
+
+    .footer {
+      margin-top: 60px;
+      padding-top: 20px;
+      border-top: 1px solid var(--border);
+      color: var(--text-dim);
+      font-size: 13px;
+    }
+
+    /* Tabs */
+    .tab-bar {
+      display: flex;
+      gap: 4px;
+      border-bottom: 1px solid var(--border);
+      margin-bottom: 16px;
+      flex-wrap: wrap;
+    }
+
+    .tab {
+      padding: 10px 16px;
+      background: none;
+      border: none;
+      color: var(--text-dim);
+      cursor: pointer;
+      font-size: 14px;
+      font-weight: 500;
+      border-bottom: 2px solid transparent;
+      transition: all 0.15s;
+    }
+
+    .tab:hover {
+      color: var(--text);
+    }
+
+    .tab.active {
+      color: var(--accent);
+      border-bottom-color: var(--accent);
+    }
+
+    .tab-content {
+      display: none;
+    }
+
+    .tab-content.active {
+      display: block;
+    }
+  </style>
+</head>
+
+<body>
+  <div class="container">
+
+    <h1>Como uma pageview vira request no CMS</h1>
+    <p class="subtitle">
+      Análise do fluxo renderer → hosting → cms-api · linguagem simples com projeções e cenários · 2026-09-22
+    </p>
+
+    <!-- TOC -->
+    <ol class="toc">
+      <li><a href="#tldr">TL;DR — leia isto primeiro</a></li>
+      <li><a href="#fluxo">O fluxo completo em 1 diagrama</a></li>
+      <li><a href="#hosting">O que o Hosting faz (e o que não faz)</a></li>
+      <li><a href="#fatores">Fatores que multiplicam requests</a></li>
+      <li><a href="#duplicacao">Por que blocos idênticos duplicam?</a></li>
+      <li><a href="#cenarios">Cenários: do melhor ao pior</a></li>
+      <li><a href="#dentro-cms">O que acontece dentro do CMS por request</a></li>
+      <li><a href="#projecao">Projeções (gráficos)</a></li>
+      <li><a href="#ranking">Ranking dos culpados</a></li>
+      <li><a href="#nao-aumenta">O que não aumenta volume</a></li>
+      <li><a href="#alavancas">Alavancas de redução</a></li>
+    </ol>
+
+    <div class="callout" style="margin-top: 24px;">
+      <div class="callout-title">Dashboard dos dados</div>
+      <p>Todos os números medidos no parque real (contas, canais, páginas, blocos, content types, projeções por conta)
+        estão no dashboard dedicado: <a
+          href="./dados-analise-volume.html"><strong>dados-analise-volume.html</strong></a>. Lá os IDs vêm completos
+        para você associar aos clientes manualmente.</p>
+    </div>
+
+    <!-- TL;DR -->
+    <h2 id="tldr">TL;DR</h2>
+
+    <div class="kpi-grid">
+      <div class="kpi">
+        <div class="kpi-label">Pageview normal</div>
+        <div class="kpi-value">2 a 15</div>
+        <div class="kpi-sub">requests ao CMS por visita</div>
+      </div>
+      <div class="kpi">
+        <div class="kpi-label">Multiplicador por request</div>
+        <div class="kpi-value warning">2 a 6</div>
+        <div class="kpi-sub">queries OpenSearch dentro do cms-api</div>
+      </div>
+      <div class="kpi">
+        <div class="kpi-label">Hosting → CMS em runtime</div>
+        <div class="kpi-value success">0</div>
+        <div class="kpi-sub">renderer chama S3 e CMS direto</div>
+      </div>
+      <div class="kpi">
+        <div class="kpi-label">Cache HTTP em página normal</div>
+        <div class="kpi-value danger">Nenhum</div>
+        <div class="kpi-sub">todo hit repete o trabalho inteiro</div>
+      </div>
+    </div>
+
+    <div class="callout">
+      <div class="callout-title">Ideia central</div>
+      <p>Uma pageview <strong>não</strong> é uma request no CMS. É de 2 a 15 requests — o multiplicador vem da
+        <strong>configuração da página</strong> (nº de blocos dinâmicos, filtros, relações), <strong>não</strong> do
+        visitante. Por isso o volume no CMS pode subir sem o tráfego subir: basta um editor adicionar um bloco.</p>
+    </div>
+
+    <p style="margin-top: 24px; color: var(--text-dim); font-size: 13px;">Números medidos direto nos bancos de
+      <strong>produção</strong> em <strong>2026-09-22</strong> (ver <a href="./dados-analise-volume.html">dashboard de
+        dados</a>):</p>
+
+    <div class="kpi-grid">
+      <div class="kpi">
+        <div class="kpi-label">Contas · Canais · Páginas</div>
+        <div class="kpi-value">360 · 1.216 · 13.532</div>
+        <div class="kpi-sub">tenant fleet do hosting</div>
+      </div>
+      <div class="kpi">
+        <div class="kpi-label">Páginas SEM blocos dinâmicos</div>
+        <div class="kpi-value success">34,3%</div>
+        <div class="kpi-sub">4.545 não amplificam volume</div>
+      </div>
+      <div class="kpi">
+        <div class="kpi-label">Páginas COM blocos dinâmicos</div>
+        <div class="kpi-value warning">8.696</div>
+        <div class="kpi-sub">2,44 blocos em média · 13 no pior caso</div>
+      </div>
+      <div class="kpi">
+        <div class="kpi-label">Blocos dinâmicos totais</div>
+        <div class="kpi-value danger">21.221</div>
+        <div class="kpi-sub">ocorrências no parque</div>
+      </div>
+    </div>
+
+    <div class="callout warning">
+      <div class="callout-title">O que faz o volume subir sem tráfego humano subir</div>
+      <ul>
+        <li><strong>Editor adiciona 1 bloco dinâmico</strong> numa página vista por 100k pessoas/dia → +100k
+          requests/dia no CMS.</li>
+        <li><strong>Editor liga filtros num bloco</strong> → dobra o custo daquele bloco em toda pageview.</li>
+        <li><strong>Bot novo crawlando o sitemap</strong> → mesmo fan-out de humano, sem short-circuit.</li>
+        <li><strong>Monitor externo hitando `/` a cada minuto</strong> → sem cache, cada hit paga o preço cheio.</li>
+      </ul>
+    </div>
+
+    <!-- Fluxo -->
+    <h2 id="fluxo">1. O fluxo completo em 1 diagrama</h2>
+
+    <div class="mermaid">
+      flowchart TD
+      A["Visitante acessa<br />https://loja.com/produtos/onix-2024"] --> B["Renderer Next.js<br />getServerSideProps"]
+      B --> C["Passo 1 — Busca 7 arquivos no S3 em paralelo<br />page.json · metadata.json · styleguide.json<br />header
+      · footer · channel · brands<br /><b>0 requests ao CMS</b>"]
+      C --> D{"Página tem<br />blocos dinâmicos?"}
+      D -- Não --> E["HTML devolvido<br />0 requests ao CMS"]
+      D -- Sim --> F["fetchAllDynamicContents<br />Promise.all por bloco"]
+      F --> G1["Bloco 1<br />fetchCMSList<br />+ filtros se on"]
+      F --> G2["Bloco 2<br />fetchCMSList<br />+ filtros se on"]
+      F --> G3["Bloco N<br />..."]
+      G1 --> H["Se rota /slug/item:<br />+1 fetchCMS do entry"]
+      G2 --> H
+      G3 --> H
+      H --> I["cms-api por request:<br />1 PG API key + 1 OS ContentType<br />+ 1 OS entries + N OS relations"]
+      I --> J["HTML SSR devolvido"]
+      J --> K{"Usuário<br />interage?"}
+      K -- "Carregar mais" --> L["POST /api/dynamic-content/entries<br />+1 a 2 requests"]
+      K -- "Filtro na URL" --> M["Next re-executa SSR<br />= pageview inteira nova"]
+      K -- "Select WhatsApp" --> N["POST /api/whatsapp/collection-entries<br />N req · N = ceil(itens/100)"]
+      K -- Só lê --> O["Fim"]
+
+      classDef s3 fill:#1a2028,stroke:#38bdf8,color:#e6e6e6
+      classDef cms fill:#1a2028,stroke:#f87171,color:#e6e6e6
+      classDef ok fill:#1a2028,stroke:#4ade80,color:#e6e6e6
+      class C s3
+      class I,L,M,N cms
+      class E,O ok
+    </div>
+
+    <p><strong>Onde está o multiplicador:</strong> o passo <code>fetchAllDynamicContents</code> é onde o CMS é chamado.
+      O nº de chamadas paralelas = nº de blocos dinâmicos × (1 ou 2, dependendo de filtro). Passo
+      <code>fetchCMS(itemId)</code> só existe em página de detalhe.</p>
+
+    <!-- Hosting -->
+    <h2 id="hosting">2. O que o Hosting faz (e o que não faz)</h2>
+
+    <p><strong>Achado importante:</strong> o hosting-api <strong>não é intermediário em runtime</strong>. Isso descarta
+      ele como amplificador do volume no CMS.</p>
+
+    <div class="mermaid">
+      flowchart TB
+      subgraph PUB["MOMENTO DA PUBLICAÇÃO — raro, sob demanda do editor"]
+      direction LR
+      E1["Editor clica<br />Publicar"] --> H1["hosting-api"]
+      H1 --> S3P["S3 público<br />N × page.json<br />metadata.json com api_key<br />header · footer ·
+      style<br />sitemap-manifest"]
+      H1 -. "1 request<br />criar API key" .-> C1["cms-api"]
+      end
+
+      subgraph RT["RUNTIME — cada visitante do site"]
+      direction LR
+      V["Visitante"] --> RD["Renderer"]
+      RD -- "lê JSON direto" --> S3R["S3"]
+      RD -- "chama direto" --> C2["cms-api"]
+      RD -. "NÃO chama" .-> H2["hosting-api"]
+      end
+
+      classDef ok fill:#1a2028,stroke:#4ade80,color:#e6e6e6
+      classDef warn fill:#1a2028,stroke:#fbbf24,color:#e6e6e6
+      classDef danger fill:#1a2028,stroke:#f87171,color:#e6e6e6
+      class C1,C2 warn
+      class H2 danger
+    </div>
+
+    <ul>
+      <li><strong>Publicação:</strong> hosting-api → cms-api = <strong>1 request</strong> (criar/reusar API key do
+        canal).</li>
+      <li><strong>Runtime:</strong> renderer → hosting-api = <strong>0 requests</strong> (renderer lê S3 direto).</li>
+      <li><strong>Runtime:</strong> renderer → cms-api = <strong>onde tudo acontece</strong>.</li>
+    </ul>
+
+    <p><strong>Conclusão:</strong> volume no CMS depende de <em>quantas páginas são vistas × quantos blocos dinâmicos
+        cada página tem</em>, e não de quantas publicações ou uploads acontecem.</p>
+
+    <!-- Fatores -->
+    <h2 id="fatores">3. Fatores que multiplicam requests</h2>
+
+    <p>Esta é a resposta central para "por que o volume sobe sem o tráfego subir".</p>
+
+    <table>
+      <thead>
+        <tr>
+          <th>Fator</th>
+          <th>Como afeta</th>
+          <th>Escala com tráfego?</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td class="strong">Nº de blocos dinâmicos na página</td>
+          <td>+1 chamada por bloco</td>
+          <td class="highlight">Sim — cada visita paga</td>
+        </tr>
+        <tr>
+          <td class="strong">Filtros habilitados no bloco</td>
+          <td>+1 chamada extra (dobra)</td>
+          <td class="highlight">Sim — cada visita paga</td>
+        </tr>
+        <tr>
+          <td class="strong">Relações requisitadas por bloco</td>
+          <td>+N queries OS dentro da mesma request</td>
+          <td class="highlight">Sim — cada visita paga</td>
+        </tr>
+        <tr>
+          <td class="strong">Página de detalhe (/slug/item)</td>
+          <td>+1 chamada fetchCMS para o item</td>
+          <td class="highlight">Sim</td>
+        </tr>
+        <tr>
+          <td class="strong">siteId presente na chamada</td>
+          <td>+1 query OS extra dentro do CMS</td>
+          <td class="highlight">Sim</td>
+        </tr>
+        <tr>
+          <td>Paginação / "carregar mais"</td>
+          <td>+1 a 2 chamadas por clique</td>
+          <td>Só se o usuário clicar</td>
+        </tr>
+        <tr>
+          <td>Filtro na URL</td>
+          <td>Re-executa getServerSideProps inteiro</td>
+          <td>Só se o usuário filtrar</td>
+        </tr>
+        <tr>
+          <td>Select WhatsApp aberto</td>
+          <td>N chamadas (ceil itens/100)</td>
+          <td>Só se abrir modal</td>
+        </tr>
+        <tr>
+          <td>Sitemap acessado</td>
+          <td>1 + ceil(entries/100) por coleção</td>
+          <td>Bots respeitam cache 5min</td>
+        </tr>
+        <tr>
+          <td class="strong">Bot/crawler</td>
+          <td>Fan-out completo (sem short-circuit)</td>
+          <td class="highlight" style="color: var(--danger);">NÃO escala com humanos</td>
+        </tr>
+        <tr>
+          <td>Nº total de entries no CMS</td>
+          <td>Afeta latência, não contador</td>
+          <td>Não</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <div class="callout warning">
+      <div class="callout-title">O ponto de dor</div>
+      <p>Os fatores marcados como "Sim — cada visita paga" são a raiz do problema: adicionar 1 bloco dinâmico é uma
+        decisão <strong>single-click no builder</strong> que aumenta o volume no CMS na proporção do tráfego daquela
+        página. Um editor pode dobrar o custo em OpenSearch sem escrever uma linha de código, sem revisão de PR.</p>
+    </div>
+
+    <div class="callout">
+      <div class="callout-title">O que os dados reais de prod mostram</div>
+      <p>Das <strong>13.241 páginas com estrutura</strong> no hosting, <strong>4.545 (34%) não têm bloco dinâmico
+          algum</strong>. As <strong>8.696 restantes (66%)</strong> concentram todo o volume, com média de <strong>2,44
+          blocos por página</strong>. A cauda vai até <strong>13 blocos numa única página</strong>. O bloco mais usado
+        (<code>DynamicCarouselAndGrid</code>) aparece <strong>8.177 vezes em 4.799 páginas</strong> — média de 1,70× por
+        página, ou seja, muita duplicação. <a href="./dados-analise-volume.html">Ver dashboard completo</a>.</p>
+    </div>
+
+    <!-- Duplicação -->
+    <h2 id="duplicacao">4. Por que blocos idênticos duplicam?</h2>
+
+    <p>A pergunta que aparece quando você olha o fluxo: se dois blocos na mesma página pedem exatamente o mesmo
+      conteúdo, o renderer manda uma request só ou duas? <strong>Manda duas.</strong> E se pedem para o mesmo content
+      type com filtros diferentes? Duas. Não existe deduplicação em nenhuma camada.</p>
+
+    <div class="callout danger">
+      <div class="callout-title">A regra dura</div>
+      <p><strong>Cada bloco dinâmico na página vira uma request HTTP independente ao cms-api, sempre.</strong> O
+        renderer não checa se dois blocos têm URL idêntica antes de disparar. O cms-api não tem endpoint de batch. Cada
+        request refaz todo o trabalho: valida API key no Postgres, resolve o ContentType no OpenSearch, busca entries,
+        resolve relações.</p>
+    </div>
+
+    <h3>Como o código está estruturado</h3>
+
+    <p>O orquestrador é <code>fetchAllDynamicContents</code> em <code>packages/blocks/src/utils/cms.ts</code>. O que ele
+      faz, em resumo:</p>
+
+    <div class="scenario-steps" style="margin: 16px 0;">1. Lê a árvore da página (Craft.js): { ROOT, nodeA, nodeB,
+      nodeC, ... }
+      2. Filtra os nodes que têm contentTypeId
+      3. Para CADA node, monta uma promise INDEPENDENTE:
+
+      const promises = cmsNodeIds.map(async (nodeId) => {
+      const config = dynamicContents[nodeId]; // config do nodeId
+      return Promise.all([
+      fetchCMSList({ contentTypeId, filters, order, max, ... }),
+      hasAvailableFilters ? fetchCMSAvailableFilters({...}) : null,
+      ]);
+      });
+
+      4. await Promise.all(promises) // todos os nodes em paralelo</div>
+
+    <p><strong>A chave da resposta:</strong> o <code>map</code> é sobre <code>nodeId</code>, não sobre
+      <code>contentTypeId</code>. Cada node vira uma promise, e nada compara "esse pediria a mesma coisa que aquele".
+    </p>
+
+    <h3>Quando duplica de verdade vs quando é só custo alto</h3>
+
+    <table>
+      <thead>
+        <tr>
+          <th>Cenário</th>
+          <th style="text-align:center;">Requests HTTP</th>
+          <th>Dedup possível?</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>2 blocos, mesmo CT, filtros/order/max <strong>idênticos</strong></td>
+          <td class="num">2 idênticas</td>
+          <td class="highlight">Sim — 100% desperdício</td>
+        </tr>
+        <tr>
+          <td>2 blocos, mesmo CT, filtros diferentes</td>
+          <td class="num">2 diferentes</td>
+          <td>Não — respostas seriam diferentes</td>
+        </tr>
+        <tr>
+          <td>2 blocos, mesmo CT, mesmo filtro mas <code>max</code> diferente</td>
+          <td class="num">2</td>
+          <td>Parcial — poderia buscar o maior e cortar</td>
+        </tr>
+        <tr>
+          <td>2 blocos, CTs diferentes</td>
+          <td class="num">2</td>
+          <td>Não — nunca duplicáveis</td>
+        </tr>
+        <tr>
+          <td>5 blocos, todos com <code>availableFilters</code> ligado</td>
+          <td class="num">10 (5×2)</td>
+          <td>Parcial — filters do mesmo CT com mesmo escopo pode virar 1</td>
+        </tr>
+        <tr>
+          <td>2 blocos, mesma coleção, um pede relação X e outro relação Y</td>
+          <td class="num">2</td>
+          <td>Parcial — dava pra pedir as duas de uma vez</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <p><strong>Reforço:</strong> mesmo no primeiro caso (100% desperdício), o código atual dispara duas requests. Não
+      existe hash de "URL + params" que evite isso.</p>
+
+    <div class="callout danger">
+      <div class="callout-title">Evidência de duplicação no parque real de prod</div>
+      <p>Contando ocorrências vs. páginas em que aparecem (medido em 2026-09-22):</p>
+      <ul>
+        <li><code>MediaSectionDynamic</code>: <strong>2.029 ocorrências em 958 páginas</strong> → média
+          <strong>2,12×</strong> por página (o pior)</li>
+        <li><code>DynamicCarouselAndGrid</code>: <strong>8.177 em 4.799 páginas</strong> → média <strong>1,70×</strong>
+          (~3.400 requests extras)</li>
+        <li><code>UnitInfo</code>: <strong>191 em 118 páginas</strong> → média <strong>1,62×</strong></li>
+        <li><code>DynamicList</code>: <strong>4.207 em 3.823 páginas</strong> → 1,10× (384 duplicações)</li>
+      </ul>
+      <p>Isso é a taxa <em>observada</em> em produção — cada duplicação é uma request extra ao CMS que a arquitetura não
+        dedup. <a href="./dados-analise-volume.html#tipos-blocos">Tabela completa dos 15 tipos</a>.</p>
+    </div>
+
+    <h3>Por que ficou assim (as decisões que fazem sentido)</h3>
+
+    <p>Não é ingenuidade — cada decisão isolada faz sentido. O problema é o efeito acumulado.</p>
+
+    <ul>
+      <li><strong>Blocos são configurações independentes.</strong> Cada bloco tem sua config (max, filtros, order,
+        paginação, availableFilters, relações). Fazer merge automático arriscaria devolver dados errados.</li>
+      <li><strong>Modelo mental do builder.</strong> Cada bloco é uma "vitrine" isolada que o racer configurou. Uma URL
+        por bloco espelha exatamente a config — ajuda debug e log.</li>
+      <li><strong>Promise.all esconde a latência.</strong> 5 requests paralelas custam quase o mesmo tempo que 1. O
+        usuário não sente. Só o custo cumulativo do CMS aparece.</li>
+      <li><strong>CMS público é REST simples, sem batch.</strong> O contrato é 1 request → 1 lista. Não existe
+        <code>POST /entries/batch</code>. Adicionar é possível mas exige migrar chamadores.</li>
+      <li><strong>Sem estado compartilhado entre blocos.</strong> Cada request é auto-contida. Bom para escalabilidade,
+        mas impede "otimizar sabendo que 5 requests vêm da mesma pageview".</li>
+    </ul>
+
+    <div class="callout warning">
+      <div class="callout-title">Insight cultural</div>
+      <p>A arquitetura atual é ótima para <strong>páginas com 1-3 blocos</strong>. Vira problema quando páginas
+        complexas viram norma. Ninguém está impedindo o editor de colocar 5 blocos de "veículos" numa página.
+        <strong>Nenhum guardrail no builder alerta</strong> ("você tem 3 blocos idênticos, deseja consolidar?"). Talvez
+        o menor esforço de todos seja um lint no editor.</p>
+    </div>
+
+    <p style="font-size: 13px; color: var(--text-dim);">Análise arquitetural completa com as 5 alternativas de
+      otimização (do cache in-memory ao GraphQL): <a
+        href="./arquitetura-blocos-dinamicos-fanout.md">docs/arquitetura-blocos-dinamicos-fanout.md</a>.</p>
+
+    <!-- Cenários -->
+    <h2 id="cenarios">5. Cenários: do melhor ao pior</h2>
+
+    <p>Cada cenário mostra <strong>quantas requests entram no cms-api</strong> e <strong>quantas queries no
+        OpenSearch</strong> aquilo dispara.</p>
+
+    <div class="scenario easy">
+      <div class="scenario-head">
+        <div>
+          <div class="scenario-title">Cenário A — Página institucional simples</div>
+          <div class="scenario-subtitle">/sobre · sem blocos dinâmicos · só textos e imagens</div>
+        </div>
+        <div class="scenario-cost">
+          <span class="num">0</span> <span class="lbl">req CMS</span>
+          <span class="num">0</span> <span class="lbl">queries OS</span>
+        </div>
+      </div>
+      <div class="scenario-steps">Visitante acessa /sobre
+        ├─ Renderer lê 7 arquivos do S3 ..... 0 requests CMS
+        ├─ fetchAllDynamicContents (vazio) .. 0 requests CMS
+        └─ HTML devolvido ................... 0 requests CMS</div>
+    </div>
+
+    <div class="scenario easy">
+      <div class="scenario-head">
+        <div>
+          <div class="scenario-title">Cenário B — Home com 1 bloco dinâmico</div>
+          <div class="scenario-subtitle">Carrossel de "veículos em destaque" (DynamicCarousel), sem filtro</div>
+        </div>
+        <div class="scenario-cost">
+          <span class="num">1</span> <span class="lbl">req CMS</span>
+          <span class="num">2</span> <span class="lbl">queries OS</span>
+        </div>
+      </div>
+      <div class="scenario-steps">Visitante acessa /
+        └─ fetchAllDynamicContents:
+        └─ Bloco carrossel:
+        └─ fetchCMSList (destaques) ...... 1 req CMS
+        ├─ 1 PG (API key)
+        ├─ 1 OS (ContentType)
+        └─ 1 OS (entries)</div>
+    </div>
+
+    <div class="scenario medium">
+      <div class="scenario-head">
+        <div>
+          <div class="scenario-title">Cenário C — Listagem com filtros</div>
+          <div class="scenario-subtitle">/veiculos · DynamicList + sidebar de filtros ativa</div>
+        </div>
+        <div class="scenario-cost">
+          <span class="num">2</span> <span class="lbl">req CMS</span>
+          <span class="num">4</span> <span class="lbl">queries OS</span>
+        </div>
+      </div>
+      <div class="scenario-steps">Visitante acessa /veiculos
+        └─ Bloco DynamicList com filtros:
+        ├─ fetchCMSList .................. 1 req CMS (2 OS)
+        └─ fetchCMSAvailableFilters ...... 1 req CMS (2 OS)</div>
+      <p style="margin-top: 10px; font-size: 13px; color: var(--text-dim);">
+        <strong>Detalhe importante:</strong> o bloco de filtros <strong>sempre</strong> duplica o custo mesmo quando o
+        usuário nunca usa os filtros. Basta o filtro estar habilitado.
+      </p>
+    </div>
+
+    <div class="scenario hard">
+      <div class="scenario-head">
+        <div>
+          <div class="scenario-title">Cenário D — Detalhe de veículo</div>
+          <div class="scenario-subtitle">/veiculos/onix-2024 · com "relacionados" + "acessórios"</div>
+        </div>
+        <div class="scenario-cost">
+          <span class="num">4</span> <span class="lbl">req CMS</span>
+          <span class="num">~11</span> <span class="lbl">queries OS</span>
+        </div>
+      </div>
+      <div class="scenario-steps">Visitante acessa /veiculos/onix-2024
+        ├─ fetchCMS(itemId = onix-2024) ....... 1 req CMS
+        │ ├─ 1 PG (API key)
+        │ ├─ 1 OS (slug lookup)
+        │ ├─ 1 OS (siteId ContentType)
+        │ ├─ 1 OS (re-fetch com visibilidade)
+        │ ├─ 1 PG (relations findMany)
+        │ ├─ N OS (getContentTypeById por relação)
+        │ └─ 1 OS msearch (entries relacionados)
+        └─ fetchAllDynamicContents:
+        ├─ Bloco relacionados ............. 1 req CMS (2 OS)
+        └─ Bloco acessórios (com filtro):
+        ├─ fetchCMSList ............... 1 req CMS (2 OS)
+        └─ fetchCMSAvailableFilters ... 1 req CMS (2 OS)</div>
+    </div>
+
+    <div class="scenario worst">
+      <div class="scenario-head">
+        <div>
+          <div class="scenario-title">Cenário E — Landing densa (pior caso "normal")</div>
+          <div class="scenario-subtitle">5 blocos dinâmicos · 3 com filtros habilitados · relações em cada</div>
+        </div>
+        <div class="scenario-cost">
+          <span class="num">8</span> <span class="lbl">req CMS</span>
+          <span class="num">~16</span> <span class="lbl">queries OS</span>
+        </div>
+      </div>
+      <div class="scenario-steps">Visitante acessa /landing-promo
+        └─ fetchAllDynamicContents (Promise.all de 5 blocos):
+        ├─ Bloco 1 (filtro on) .... 2 req CMS (4 OS)
+        ├─ Bloco 2 (filtro on) .... 2 req CMS (4 OS)
+        ├─ Bloco 3 (filtro on) .... 2 req CMS (4 OS)
+        ├─ Bloco 4 (sem filtro) ... 1 req CMS (2 OS)
+        └─ Bloco 5 (sem filtro) ... 1 req CMS (2 OS)</div>
+    </div>
+
+    <div class="scenario worst">
+      <div class="scenario-head">
+        <div>
+          <div class="scenario-title">Cenário F — Interação client-side (usuário engajado)</div>
+          <div class="scenario-subtitle">Depois do hydrate: paginação, filtros, WhatsApp</div>
+        </div>
+        <div class="scenario-cost">
+          <span class="num">até 5x</span> <span class="lbl">pageview-equiv.</span>
+        </div>
+      </div>
+      <table style="margin-top: 10px;">
+        <thead>
+          <tr>
+            <th>Interação</th>
+            <th>Rota interna</th>
+            <th style="text-align:right;">Req CMS extras</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>Clicar "carregar mais" 1x</td>
+            <td><code>POST /api/dynamic-content/entries</code></td>
+            <td class="num">1-2</td>
+          </tr>
+          <tr>
+            <td>Aplicar filtro na URL</td>
+            <td>Next re-executa <code>getServerSideProps</code></td>
+            <td class="num">= pageview inteira</td>
+          </tr>
+          <tr>
+            <td>Abrir select WhatsApp</td>
+            <td><code>POST /api/whatsapp/collection-entries</code></td>
+            <td class="num">3-10 típico</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="scenario worst">
+      <div class="scenario-head">
+        <div>
+          <div class="scenario-title">Cenário G — Bot crawlando sitemap</div>
+          <div class="scenario-subtitle">Google/Bing percorre todas as URLs listadas</div>
+        </div>
+        <div class="scenario-cost">
+          <span class="num">6000+</span> <span class="lbl">req CMS por crawl</span>
+        </div>
+      </div>
+      <div class="scenario-steps">Sitemap em si (cache 5min):
+        └─ fetchAllEntries por coleção:
+        └─ 3 coleções × 500 entries = 15 req CMS
+
+        Depois o bot visita cada URL do sitemap:
+        └─ 1500 URLs × ~4 req CMS (perfil D) = 6000 req CMS</div>
+      <p style="margin-top: 10px; font-size: 13px; color: var(--text-dim);">
+        Sem detecção de user-agent no renderer, o bot passa pelo mesmo caminho de um humano. Cada URL crawleada paga
+        preço cheio.
+      </p>
+    </div>
+
+    <!-- Dentro do CMS -->
+    <h2 id="dentro-cms">6. O que acontece dentro do CMS por request</h2>
+
+    <p>Cada request pública ao cms-api dispara múltiplas queries no OpenSearch e no Postgres. Este é o <strong>segundo
+        estágio</strong> de amplificação — o que a métrica do Bonsai captura.</p>
+
+    <div class="callout warning">
+      <div class="callout-title">Pior caso real medido</div>
+      <p>O content type <strong><code>Modelo</code></strong> (o "hub" do catálogo automotivo) tem <strong>29 campos + 5
+          relações</strong> → uma única request <code>listPublicEntries</code> desse tipo dispara <strong>8 queries
+          OpenSearch</strong>. O <strong><code>Versao de Veiculo</code></strong> tem <strong>43 campos + 4
+          relações</strong> → 7 queries. Como esses dois são os "hubs" do domínio e vivem na conta compartilhada
+        <code>general</code> (consumida por todas as ~143 contas do hosting), qualquer request para eles paga o preço
+        máximo do fan-out.</p>
+    </div>
+
+    <h3>Fan-out por endpoint</h3>
+
+    <table>
+      <thead>
+        <tr>
+          <th>Endpoint público</th>
+          <th style="text-align:right;">Postgres</th>
+          <th style="text-align:right;">OpenSearch (mín)</th>
+          <th style="text-align:right;">OpenSearch (máx com M relações)</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><code>listPublicEntries</code></td>
+          <td class="num">1 (API key)</td>
+          <td class="num">2</td>
+          <td class="num highlight">M + 3</td>
+        </tr>
+        <tr>
+          <td><code>getPublicEntry</code></td>
+          <td class="num">1 (API key) + 1 (relations)</td>
+          <td class="num">1</td>
+          <td class="num highlight">M + 4</td>
+        </tr>
+        <tr>
+          <td><code>getAvailableFilters</code></td>
+          <td class="num">1 (API key)</td>
+          <td class="num">2</td>
+          <td class="num">2</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <h3>Fluxo interno — listPublicEntries</h3>
+
+    <div class="mermaid">
+      flowchart TD
+      A["Request chega no cms-api<br />GET /content-entries/public/:acc/entries"] --> B["Middleware
+      ApiKeyMiddleware<br />SELECT api_key WHERE accountId+prefix<br /><b>1 query Postgres</b>"]
+      B --> C["Controller.listPublicEntries"]
+      C --> D["getContentTypeById<br /><b>1 query OpenSearch</b>"]
+      D --> E["searchContentEntries (filtros + paginação)<br /><b>1 query OpenSearch</b>"]
+      E --> F{"Tem relations<br />requisitadas?"}
+      F -- Não --> G["Devolve JSON<br />TOTAL: 1 PG + 2 OS"]
+      F -- Sim --> H["resolveRelationLookup"]
+      H --> I["prisma.contentTypeRelation.findMany<br /><b>1 query Postgres</b>"]
+      I --> J["Para cada ContentType distinto:<br />getContentTypeById<br /><b>N queries OpenSearch</b>"]
+      J --> K["getContentEntriesByIds via msearch<br /><b>1 query OpenSearch</b>"]
+      K --> L["Devolve JSON<br />TOTAL: 2 PG + (N+3) OS"]
+
+      classDef bad fill:#1a2028,stroke:#f87171,color:#e6e6e6
+      class B,D,E,I,J,K bad
+    </div>
+
+    <div class="callout danger">
+      <div class="callout-title">Ausência total de caches no cms-api</div>
+      <ul>
+        <li><strong>Sem cache in-memory</strong> (não há LRU nem node-cache).</li>
+        <li><strong>Sem Redis cache</strong> (Redis só serve BullMQ das filas).</li>
+        <li><strong>Sem <code>Cache-Control</code></strong> nos responses — CMS não instrui CDN a cachear.</li>
+        <li><strong>Sem cache de API key</strong> — cada request bate no Postgres pra validar.</li>
+        <li><strong>Sem cache de ContentType</strong> — cada request bate no OpenSearch pra resolver schema (que muda
+          raríssimo).</li>
+      </ul>
+      <p style="margin-top: 8px;"><strong>Consequência:</strong> 100 visitantes olhando a mesma página no mesmo segundo
+        geram 100× o mesmo trabalho. Nada é deduplicado.</p>
+    </div>
+
+    <!-- Projeções (gráficos) -->
+    <h2 id="projecao">7. Projeções</h2>
+
+    <div class="tab-bar">
+      <button class="tab active" data-tab="chart-1">Requests por 1000 pageviews</button>
+      <button class="tab" data-tab="chart-2">OpenSearch por 1000 pageviews</button>
+      <button class="tab" data-tab="chart-3">Impacto de decisões editoriais</button>
+    </div>
+
+    <div class="tab-content active" id="chart-1">
+      <h3>Requests ao CMS por 1000 pageviews (por perfil de página)</h3>
+      <div class="chart-wrapper"><canvas id="chartRequests"></canvas></div>
+      <p style="font-size: 13px; color: var(--text-dim);">Perfil A: sem blocos dinâmicos. B: home 1 bloco sem filtro. C:
+        listagem com filtros. D: detalhe com 2 blocos. E: landing densa 5 blocos.</p>
+    </div>
+
+    <div class="tab-content" id="chart-2">
+      <h3>Queries no OpenSearch por 1000 pageviews</h3>
+      <div class="chart-wrapper"><canvas id="chartOS"></canvas></div>
+      <p style="font-size: 13px; color: var(--text-dim);">A quantidade multiplica por 2 a 4 quando comparada a requests,
+        dependendo do fan-out interno do cms-api.</p>
+    </div>
+
+    <div class="tab-content" id="chart-3">
+      <h3>Volume no CMS mudando só configuração editorial (tráfego fixo em 100k pageviews/dia)</h3>
+      <div class="chart-wrapper tall"><canvas id="chartEditorial"></canvas></div>
+      <p style="font-size: 13px; color: var(--text-dim);">Distribuição fixa: 30% home, 40% listagem, 20% detalhe, 10%
+        institucional. Nenhuma pageview a mais entra. Só mudou o builder.</p>
+      <div class="callout warning" style="margin-top: 16px;">
+        <div class="callout-title">Leia isto</div>
+        <p>O tráfego humano não subiu 1 pageview. O volume no CMS <strong>quase dobrou (+89%)</strong> por 3 decisões
+          dentro do builder.</p>
+      </div>
+    </div>
+
+    <!-- Ranking -->
+    <h2 id="ranking">8. Ranking dos culpados</h2>
+    <p>Ordenando por impacto esperado no volume total, baseado nas evidências:</p>
+
+    <ul class="amp-list">
+      <li class="amp p1">
+        <div class="amp-rank">#1</div>
+        <div class="amp-body">
+          <div class="amp-title">Nº de blocos dinâmicos por página × filtros habilitados</div>
+          <div class="amp-desc">Multiplicador direto por pageview. Toda vez que alguém adiciona um bloco no builder, o
+            site inteiro sente. Decisão editorial que ninguém revisa.</div>
+        </div>
+      </li>
+      <li class="amp p1">
+        <div class="amp-rank">#2</div>
+        <div class="amp-body">
+          <div class="amp-title">Ausência de deduplicação e cache em qualquer camada</div>
+          <div class="amp-desc">Blocos idênticos na mesma página não são deduplicados (ver seção 4). Não há CDN na
+            frente do renderer, nem Cache-Control no CMS, nem cache in-memory do ContentType, nem cache da API key. Cem
+            hits idênticos = cem trabalhos idênticos.</div>
+        </div>
+      </li>
+      <li class="amp p2">
+        <div class="amp-rank">#3</div>
+        <div class="amp-body">
+          <div class="amp-title">Página de detalhe multiplica por relações</div>
+          <div class="amp-desc">getPublicEntry com M relações requisitadas dispara M queries getContentTypeById extras.
+            Coleções bem relacionadas amplificam.</div>
+        </div>
+      </li>
+      <li class="amp p2">
+        <div class="amp-rank">#4</div>
+        <div class="amp-body">
+          <div class="amp-title">Interações client-side (paginação, filtros na URL)</div>
+          <div class="amp-desc">Cada clique refaz caminho quase inteiro. Filtro na URL re-executa getServerSideProps. UX
+            densa = volume alto.</div>
+        </div>
+      </li>
+      <li class="amp p3">
+        <div class="amp-rank">#5</div>
+        <div class="amp-body">
+          <div class="amp-title">Sitemap paginado</div>
+          <div class="amp-desc">Cache de 5min ajuda, mas cada expirada dispara ceil(entries/100) requests por coleção.
+            Bots respeitam esse cache; monitores externos não.</div>
+        </div>
+      </li>
+      <li class="amp p3">
+        <div class="amp-rank">#6</div>
+        <div class="amp-body">
+          <div class="amp-title">Detalhes despercebidos</div>
+          <div class="amp-desc">siteId presente adiciona 1 OS query. getAvailableFilters sempre roda mesmo com filtros
+            sem uso real. API key valida no Postgres a cada request.</div>
+        </div>
+      </li>
+      <li class="amp p4">
+        <div class="amp-rank">#7</div>
+        <div class="amp-body">
+          <div class="amp-title">Bots com crawl agressivo</div>
+          <div class="amp-desc">Não é o driver principal em condições normais, mas é o wildcard: crawler novo pode
+            explodir volume em horas.</div>
+        </div>
+      </li>
+    </ul>
+
+    <!-- Não aumenta -->
+    <h2 id="nao-aumenta">9. O que <em>não</em> aumenta volume no CMS</h2>
+
+    <p>Para fechar a lista, o que <strong>não</strong> contribui (contra intuições comuns):</p>
+
+    <ul>
+      <li>Publicar canais (hosting → CMS = 1 request por publish; irrelevante).</li>
+      <li>Editar metadata.json, header, footer, styleguide (S3 direto, sem CMS).</li>
+      <li>Uploads no S3, invalidação de CloudFront.</li>
+      <li>Leads/formulários (vão para crm-api/hosting-api, não CMS).</li>
+      <li>Assets estáticos (<code>/_next/static/...</code>) — servidos pelo CDN.</li>
+      <li>Tráfego cross-domain de outros canais — cada canal tem sua própria API key mas o padrão é idêntico; não há
+        multiplicador surpresa.</li>
+    </ul>
+
+    <!-- Alavancas -->
+    <h2 id="alavancas">10. Alavancas de redução</h2>
+
+    <p>Sem propor solução, só mapeando onde mexer teria retorno alto:</p>
+
+    <table>
+      <thead>
+        <tr>
+          <th>Alavanca</th>
+          <th>Reduz principalmente</th>
+          <th>Esforço</th>
+          <th>Impacto esperado</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td class="strong">Cache in-memory de ContentType no cms-api</td>
+          <td>Passo K do fluxograma</td>
+          <td>Baixo</td>
+          <td class="highlight">-30 a -50% queries OS</td>
+        </tr>
+        <tr>
+          <td class="strong">Deduplicação por URL no <code>fetchAllDynamicContents</code></td>
+          <td>Blocos idênticos na mesma página (seção 4)</td>
+          <td>Baixo</td>
+          <td class="highlight">-100% dos casos duplicados</td>
+        </tr>
+        <tr>
+          <td class="strong">Endpoint de batch no cms-api (<code>POST /entries/batch</code>)</td>
+          <td>N requests da mesma página viram 1 HTTP</td>
+          <td>Médio-alto</td>
+          <td class="highlight">Corta fan-out interno drasticamente</td>
+        </tr>
+        <tr>
+          <td class="strong">Cache de API key (Postgres → memory)</td>
+          <td>Middleware por request</td>
+          <td>Baixo</td>
+          <td class="highlight">-1 query PG por request</td>
+        </tr>
+        <tr>
+          <td class="strong">Cache-Control público + CDN nas leituras</td>
+          <td>Requests iguais em janela curta</td>
+          <td>Médio</td>
+          <td class="highlight">-60 a -90% em picos</td>
+        </tr>
+        <tr>
+          <td>available-filters opt-in por bloco</td>
+          <td>Cenários C, D, E</td>
+          <td>Baixo</td>
+          <td>Corta ~50% em blocos com filtro</td>
+        </tr>
+        <tr>
+          <td>Detectar bot no renderer</td>
+          <td>Cenário G</td>
+          <td>Médio</td>
+          <td>-100% para bots</td>
+        </tr>
+        <tr>
+          <td>Debounce/cache no useContentData do builder</td>
+          <td>Picos horário comercial</td>
+          <td>Baixo</td>
+          <td>Reduz picos</td>
+        </tr>
+        <tr>
+          <td>Rever getServerSideProps refazendo em filtro URL</td>
+          <td>Interação client-side</td>
+          <td>Alto</td>
+          <td>Reduz retrabalho de navegação</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <div class="footer">
+      <p><strong>Referências:</strong></p>
+      <ul>
+        <li><a href="./renderer-cms-requests.md">Fluxo renderer → CMS (versão anterior técnica)</a></li>
+        <li><a href="./arquitetura-blocos-dinamicos-fanout.md">Arquitetura: por que blocos idênticos duplicam (análise
+            completa com 5 níveis de otimização)</a></li>
+        <li><a href="./plano-queries-volume.md">Plano de queries — medir volume de blocos e relações</a></li>
+        <li><a href="./bonsai-investigation/04-diagnostico-e-plano-acao.md">Diagnóstico Bonsai completo</a></li>
+        <li><a href="./card-investigacao-volume-opensearch.md">Card do spike de investigação</a></li>
+        <li><a href="./perf/suspeito-1-contenttype-lookup.md">Suspeita ContentType lookup</a></li>
+      </ul>
+    </div>
+
+  </div>
+
+  <script>
+    mermaid.initialize({
+      startOnLoad: true,
+      theme: 'dark',
+      securityLevel: 'loose',
+      themeVariables: {
+        background: '#0f1419',
+        primaryColor: '#1a2028',
+        primaryTextColor: '#e6e6e6',
+        primaryBorderColor: '#2c3540',
+        lineColor: '#a0a8b0',
+        secondaryColor: '#242b34',
+        tertiaryColor: '#0f1419',
+        fontFamily: '-apple-system, BlinkMacSystemFont, Segoe UI, Roboto, sans-serif',
+      },
+      flowchart: { curve: 'basis', padding: 15, htmlLabels: true }
+    });
+
+    // Tabs
+    document.querySelectorAll('.tab').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const targetId = btn.dataset.tab;
+        document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+        document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+        btn.classList.add('active');
+        document.getElementById(targetId).classList.add('active');
+      });
+    });
+
+    // Chart.js defaults
+    Chart.defaults.color = '#a0a8b0';
+    Chart.defaults.borderColor = '#2c3540';
+    Chart.defaults.font.family = '-apple-system, BlinkMacSystemFont, Segoe UI, Roboto, sans-serif';
+
+    const perfilLabels = [
+      'A · Institucional',
+      'B · Home 1 bloco',
+      'C · Listagem c/ filtros',
+      'D · Detalhe 2 blocos',
+      'E · Landing densa 5 blocos'
+    ];
+
+    // Chart 1 — requests
+    new Chart(document.getElementById('chartRequests'), {
+      type: 'bar',
+      data: {
+        labels: perfilLabels,
+        datasets: [{
+          label: 'Requests ao CMS por 1000 pageviews',
+          data: [0, 1000, 2000, 4000, 8000],
+          backgroundColor: ['#4ade80', '#4ade80', '#38bdf8', '#fbbf24', '#f87171'],
+          borderRadius: 6
+        }]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: { legend: { display: false } },
+        scales: {
+          y: { beginAtZero: true, grid: { color: '#2c3540' }, ticks: { color: '#a0a8b0' } },
+          x: { grid: { display: false }, ticks: { color: '#e6e6e6' } }
+        }
+      }
+    });
+
+    // Chart 2 — OS
+    new Chart(document.getElementById('chartOS'), {
+      type: 'bar',
+      data: {
+        labels: perfilLabels,
+        datasets: [{
+          label: 'Queries no OpenSearch por 1000 pageviews',
+          data: [0, 2000, 4000, 11000, 16000],
+          backgroundColor: ['#4ade80', '#4ade80', '#38bdf8', '#fbbf24', '#f87171'],
+          borderRadius: 6
+        }]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: { legend: { display: false } },
+        scales: {
+          y: { beginAtZero: true, grid: { color: '#2c3540' }, ticks: { color: '#a0a8b0' } },
+          x: { grid: { display: false }, ticks: { color: '#e6e6e6' } }
+        }
+      }
+    });
+
+    // Chart 3 — editorial impact
+    new Chart(document.getElementById('chartEditorial'), {
+      type: 'bar',
+      data: {
+        labels: [
+          'Baseline atual',
+          '+ Filtro na home',
+          '+ Detalhe com 4 blocos',
+          '+ Filtros em todos os blocos possíveis',
+          'Todas as mudanças combinadas'
+        ],
+        datasets: [
+          {
+            label: 'Requests CMS/dia',
+            data: [180000, 210000, 220000, 260000, 340000],
+            backgroundColor: '#38bdf8',
+            borderRadius: 6
+          },
+          {
+            label: 'Queries OS/dia',
+            data: [430000, 490000, 510000, 600000, 780000],
+            backgroundColor: '#c084fc',
+            borderRadius: 6
+          }
+        ]
+      },
+      options: {
+        indexAxis: 'y',
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+          legend: { position: 'top', labels: { color: '#e6e6e6' } },
+          tooltip: {
+            callbacks: {
+              label: (ctx) => `${ctx.dataset.label}: ${ctx.raw.toLocaleString('pt-BR')}`
+            }
+          }
+        },
+        scales: {
+          x: {
+            beginAtZero: true,
+            grid: { color: '#2c3540' },
+            ticks: {
+              color: '#a0a8b0',
+              callback: (v) => (v / 1000) + 'k'
+            }
+          },
+          y: { grid: { display: false }, ticks: { color: '#e6e6e6' } }
+        }
+      }
+    });
+
+  </script>
+</body>
+
+</html>
