@@ -490,22 +490,22 @@
         <div class="kpi-sub">+9% vs. dia anterior</div>
       </div>
       <div class="kpi">
-        <div class="kpi-label">HTTP req públicos/dia</div>
-        <div class="kpi-value">740K</div>
-        <div class="kpi-sub">514 rpm no cms-api</div>
+        <div class="kpi-label">HTTP req/dia no cms-api</div>
+        <div class="kpi-value">755K</div>
+        <div class="kpi-sub">525 rpm · CloudWatch (real)</div>
       </div>
       <div class="kpi">
-        <div class="kpi-label">Requests/dia no renderer</div>
-        <div class="kpi-value">~820K</div>
-        <div class="kpi-sub">570 rpm somando todas as rotas</div>
+        <div class="kpi-label">Bandwidth cms-api/dia</div>
+        <div class="kpi-value warning">37,5 GB</div>
+        <div class="kpi-sub">avg 52 KB · max 10 MB</div>
       </div>
       <div class="kpi">
-        <div class="kpi-label">Pageviews de conteúdo/dia</div>
-        <div class="kpi-value">~503K</div>
-        <div class="kpi-sub">349,6 rpm (home, slug e item)</div>
+        <div class="kpi-label">Concentração top 2 contas</div>
+        <div class="kpi-value">62%</div>
+        <div class="kpi-sub">Parvi + Automob dos requests</div>
       </div>
       <div class="kpi">
-        <div class="kpi-label">Fan-out OS por request HTTP</div>
+        <div class="kpi-label">Fan-out OS por request</div>
         <div class="kpi-value">2,01×</div>
         <div class="kpi-sub">1 lookup + 1 search</div>
       </div>
@@ -541,6 +541,15 @@
         A cada request HTTP que o cms-api recebe, ele faz <strong>2 buscas no OpenSearch</strong>:
         uma para descobrir o tipo de conteúdo (<code>getContentTypeById</code>) e outra para o dado em si.
         Como o tipo de conteúdo muda raramente, essa primeira busca é <strong>evitável com cache</strong>.
+      </p>
+      <p style="margin-top: 12px;">
+        <strong>Do lado da demanda:</strong> o tráfego é <strong>concentrado em poucas contas</strong>.
+        Grupo Parvi + Grupo Automob juntos respondem por 62% dos requests e 76% do bandwidth do cms-api.
+        Não é volume de bots — o padrão temporal é claramente humano/comercial (pico às 17h BRT, vale às 03h-06h BRT).
+        Contas diferentes geram tráfego proporcional ao <strong>número de blocos dinâmicos</strong> por página
+        dos seus sites — daí Geely Brasil ter muito pageview no renderer mas pouco impacto no CMS
+        (site institucional, poucos blocos dinâmicos), enquanto Parvi tem menos pageviews mas cada uma
+        dispara muitas chamadas ao CMS (dealers com listagens de veículos, filtros, relações).
       </p>
     </div>
 
@@ -853,6 +862,378 @@
       <p style="color: var(--text-dim); font-size: 13px; margin-top: 12px;">
         Admin total ≈ 15 rpm = <strong>2,9% do volume público</strong>. Confirma que builder/admin não contribuem para o
         problema.
+      </p>
+    </div>
+
+    <!-- Section 4b: Ground truth do CloudWatch -->
+    <h2>4b. Ground truth: CloudWatch Logs Insights (log real do cms-api)</h2>
+    <p>
+      O New Relic APM é útil pra visão geral, mas trabalha com métricas agregadas e às vezes sampling.
+      Pra confirmar os números e ganhar granularidade por conta, é possível ir direto no log dos containers
+      do cms-api em ECS (log group <code>/aws/ecs/mono-cms-prod-web</code>). Cada request HTTP loga uma linha
+      completa no formato Morgan/Express: método, path, status, tamanho da response e duração.
+      A partir dessas linhas dá pra somar, agrupar por accountId e cruzar tudo — sem depender de sampling.
+    </p>
+
+    <div class="card">
+      <h3>Confirmando o total</h3>
+      <div class="kpi-grid" style="margin: 12px 0 20px;">
+        <div class="kpi">
+          <div class="kpi-label">Total requests em 24h</div>
+          <div class="kpi-value">755.391</div>
+          <div class="kpi-sub">= 525 rpm · bate com NR (514 rpm)</div>
+        </div>
+        <div class="kpi">
+          <div class="kpi-label">Bandwidth total</div>
+          <div class="kpi-value">37,55 GB</div>
+          <div class="kpi-sub">avg 52 KB · <strong>max 10 MB</strong></div>
+        </div>
+        <div class="kpi">
+          <div class="kpi-label">Latência média</div>
+          <div class="kpi-value">293 ms</div>
+          <div class="kpi-sub">p95 = 1.159 ms</div>
+        </div>
+      </div>
+
+      <h3 style="margin-top: 24px;">Split por endpoint — <code>entries?</code> é o driver único de bandwidth</h3>
+      <table>
+        <thead>
+          <tr>
+            <th>Endpoint</th>
+            <th class="num">Requests</th>
+            <th class="num">% req</th>
+            <th class="num">Bandwidth</th>
+            <th class="num">avg KB/response</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><code>entries?</code> (list)</td>
+            <td class="num strong">570.081</td>
+            <td class="num highlight">75,5%</td>
+            <td class="num strong">37,5 GB</td>
+            <td class="num strong">68 KB</td>
+          </tr>
+          <tr>
+            <td><code>entries/</code> (item)</td>
+            <td class="num">104.445</td>
+            <td class="num">13,8%</td>
+            <td class="num">789 MB</td>
+            <td class="num">7,8 KB</td>
+          </tr>
+          <tr>
+            <td><code>available-filters</code></td>
+            <td class="num">80.820</td>
+            <td class="num">10,7%</td>
+            <td class="num">139 MB</td>
+            <td class="num">1,8 KB</td>
+          </tr>
+        </tbody>
+      </table>
+
+      <div class="callout" style="margin-top: 16px;">
+        <div class="callout-title">Achado importante</div>
+        <p>
+          <code>entries?</code> concentra <strong>99,6% de todo o bandwidth</strong> (37,5 GB de 37,7 GB totais)
+          e traz responses <strong>9× maiores</strong> que <code>entries/:slug</code> e <strong>38× maiores</strong>
+          que <code>available-filters</code>. Toda otimização de bandwidth precisa focar nesse endpoint específico.
+          Também apareceu uma <strong>response única de 10 MB</strong> — provavelmente algum caller com
+          <code>per_page</code>
+          muito alto ou content type com fields pesados. Vale caçar essa URL específica.
+        </p>
+      </div>
+    </div>
+
+    <h3 style="margin-top: 32px;">Top 10 contas — onde o tráfego se concentra</h3>
+    <p>
+      Extraindo o <code>accountId</code> do path das URLs do log, é possível ver o volume por conta —
+      esse é o mapeamento mais preciso disponível hoje, sem depender de sampling ou custom attributes.
+      O UUID sozinho não diz muito, então cruzei com o nome das contas no admin:
+    </p>
+
+    <div class="card">
+      <table>
+        <thead>
+          <tr>
+            <th>#</th>
+            <th>Conta</th>
+            <th class="num">Requests</th>
+            <th class="num">% req</th>
+            <th class="num">Bandwidth</th>
+            <th class="num">% BW</th>
+            <th class="num">KB / response</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>1</td>
+            <td class="strong">Grupo Parvi</td>
+            <td class="num strong">343.262</td>
+            <td class="num highlight">45,4%</td>
+            <td class="num">13,8 GB</td>
+            <td class="num highlight">36,8%</td>
+            <td class="num">40</td>
+          </tr>
+          <tr>
+            <td>2</td>
+            <td class="strong">Grupo Automob</td>
+            <td class="num strong">122.530</td>
+            <td class="num">16,2%</td>
+            <td class="num strong">14,6 GB</td>
+            <td class="num highlight">38,9% ⚠</td>
+            <td class="num strong">119 ⚠</td>
+          </tr>
+          <tr>
+            <td>3</td>
+            <td>Geely Brasil</td>
+            <td class="num">78.793</td>
+            <td class="num">10,4%</td>
+            <td class="num">1,25 GB</td>
+            <td class="num">3,3%</td>
+            <td class="num">15,9</td>
+          </tr>
+          <tr>
+            <td>4</td>
+            <td>Grupo AC Campo</td>
+            <td class="num">22.162</td>
+            <td class="num">2,9%</td>
+            <td class="num">803 MB</td>
+            <td class="num">2,1%</td>
+            <td class="num">36</td>
+          </tr>
+          <tr>
+            <td>5</td>
+            <td>Grupo Via 1</td>
+            <td class="num">18.439</td>
+            <td class="num">2,4%</td>
+            <td class="num">2,2 GB</td>
+            <td class="num">5,9% ⚠</td>
+            <td class="num strong">119 ⚠</td>
+          </tr>
+          <tr>
+            <td>6</td>
+            <td>Itavema</td>
+            <td class="num">17.092</td>
+            <td class="num">2,3%</td>
+            <td class="num">568 MB</td>
+            <td class="num">1,5%</td>
+            <td class="num">33</td>
+          </tr>
+          <tr>
+            <td>7</td>
+            <td>Grupo Guiauto</td>
+            <td class="num">12.276</td>
+            <td class="num">1,6%</td>
+            <td class="num">662 MB</td>
+            <td class="num">1,8%</td>
+            <td class="num">54</td>
+          </tr>
+          <tr>
+            <td>8</td>
+            <td>Marca Motors</td>
+            <td class="num">11.199</td>
+            <td class="num">1,5%</td>
+            <td class="num">321 MB</td>
+            <td class="num">0,9%</td>
+            <td class="num">29</td>
+          </tr>
+          <tr>
+            <td>9</td>
+            <td>Nacional VW</td>
+            <td class="num">10.913</td>
+            <td class="num">1,4%</td>
+            <td class="num">371 MB</td>
+            <td class="num">1,0%</td>
+            <td class="num">34</td>
+          </tr>
+          <tr>
+            <td>10</td>
+            <td>Davanti Multimarcas</td>
+            <td class="num">9.477</td>
+            <td class="num">1,3%</td>
+            <td class="num">373 MB</td>
+            <td class="num">1,0%</td>
+            <td class="num">39</td>
+          </tr>
+          <tr class="row-total">
+            <td>—</td>
+            <td>Top 10 acumulado</td>
+            <td class="num">646.143</td>
+            <td class="num">85,4%</td>
+            <td class="num">34,9 GB</td>
+            <td class="num">93,1%</td>
+            <td class="num">—</td>
+          </tr>
+        </tbody>
+      </table>
+      <p style="color: var(--text-dim); font-size: 13px; margin-top: 12px;">
+        Long tail (contas fora do top 10) = 14,6% dos requests, 6,9% do bandwidth. Otimizações genéricas
+        ajudam pouco por si só — o ROI está em atacar o topo da distribuição.
+      </p>
+
+      <h3 style="margin-top: 24px;">Visualização — requests vs bandwidth por conta</h3>
+      <p style="color: var(--text-dim); font-size: 13px;">
+        O gráfico abaixo compara as duas dimensões lado a lado. Contas onde a barra de <strong>bandwidth</strong>
+        (roxa) é desproporcionalmente maior que a de <strong>requests</strong> (verde) são as que puxam responses
+        grandes — o caso claro do Grupo Automob e do Grupo Via 1.
+      </p>
+      <div class="chart-wrapper" style="height: 460px; margin-top: 12px;">
+        <canvas id="chartAccountsDistribution"></canvas>
+      </div>
+    </div>
+
+    <div class="card-grid-2" style="margin-top: 20px;">
+      <div class="callout">
+        <div class="callout-title">Insight 1: Concentração massiva</div>
+        <p>
+          <strong>Top 2 contas (Parvi + Automob) = 62% dos requests, 76% do bandwidth.</strong>
+          Isso é bom pra otimização: um cache dedicado por accountId ou um CDN na frente das rotas
+          públicas atinge desproporcionalmente essas duas contas.
+        </p>
+      </div>
+      <div class="callout warning">
+        <div class="callout-title">Insight 2: Grupo Automob é o real problema de bandwidth</div>
+        <p>
+          Só 16% dos requests, mas <strong>quase 39% do bandwidth total</strong>.
+          Response média de <strong>119 KB — 2,3× a média geral (52 KB)</strong>. Puxa listas maiores
+          que qualquer outro. Investigar <code>per_page</code>, content type e uso de <code>_source_excludes</code>
+          pra essa conta especificamente.
+        </p>
+      </div>
+      <div class="callout warning">
+        <div class="callout-title">Insight 3: Grupo Via 1 tem o mesmo perfil de Automob</div>
+        <p>
+          Só 2,4% dos requests mas <strong>119 KB de response média — idêntico ao Automob</strong>.
+          Coincidência suspeita — pode haver template compartilhado ou content type de veículos
+          com fields pesados que ambas as contas usam.
+        </p>
+      </div>
+      <div class="callout">
+        <div class="callout-title">Insight 4: Padrão temporal humano/comercial</div>
+        <p>
+          Timeline por hora mostra <strong>vale às 03h-06h BRT</strong> (13-16K req/h) e
+          <strong>pico às 17h BRT</strong> (50K req/h). Ratio pico/vale = 4×, clássico de tráfego real.
+          <strong>Não é bot dominante</strong> — se fosse, a linha seria plana 24/7.
+        </p>
+      </div>
+    </div>
+
+    <div class="chart-wrapper" style="height: 320px; margin-top: 20px;">
+      <canvas id="chartTimeline"></canvas>
+    </div>
+
+    <!-- Section 4c: Fan-out per site -->
+    <h2>4c. Por que contas diferentes geram tráfego diferente — fan-out per site</h2>
+    <p>
+      Um insight importante: <strong>tráfego no renderer não é igual a tráfego no cms-api</strong>.
+      Um site com muitos pageviews mas poucos blocos dinâmicos gera pouco tráfego no CMS.
+      Um site com poucos pageviews mas muitos blocos dinâmicos gera muito. Isso explica a discrepância
+      entre o ranking do renderer (onde Geely Brasil aparece com 34% das pageviews) e o ranking
+      do cms-api (onde Geely Brasil é só 10%).
+    </p>
+
+    <div class="card">
+      <h3>A conta que interessa</h3>
+      <p style="font-size: 15px; margin: 12px 0;">
+        <strong>CMS requests por site ≈ pageviews × blocos dinâmicos médios por página × 1,14</strong>
+      </p>
+      <p style="font-size: 13px; color: var(--text-dim);">
+        O fator 1,14 vem de <code>available-filters</code>, chamado em paralelo com <code>entries</code>
+        em blocos que têm filtros habilitados (~14% dos blocos, ver Seção 4b).
+      </p>
+
+      <h3 style="margin-top: 24px;">Duas medições, complementares</h3>
+      <table>
+        <thead>
+          <tr>
+            <th>Método</th>
+            <th>O que mede</th>
+            <th>Fonte de dado</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><strong>Empírico</strong></td>
+            <td>O fan-out real que está acontecendo</td>
+            <td>Log do cms-api (extrair <code>siteId</code> da URL) + Span do renderer (pageviews por domínio)</td>
+          </tr>
+          <tr>
+            <td><strong>Estrutural</strong></td>
+            <td>A complexidade "de projeto" do site — quantos blocos dinâmicos existem</td>
+            <td>JSONs de página no S3 (contar <code>dynamicContents</code> por template)</td>
+          </tr>
+        </tbody>
+      </table>
+
+      <h3 style="margin-top: 24px;">Interpretação cruzada</h3>
+      <table>
+        <thead>
+          <tr>
+            <th>Perfil</th>
+            <th>Complexidade estrutural</th>
+            <th>Tráfego</th>
+            <th>Interpretação</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><strong>Geely Brasil</strong></td>
+            <td>Baixa (site institucional)</td>
+            <td>Alto (34% pageviews)</td>
+            <td>Muita pageview, pouco impacto — <strong>OK</strong></td>
+          </tr>
+          <tr>
+            <td><strong>Grupo Parvi</strong></td>
+            <td>Alta (dealer com listagens)</td>
+            <td>Alto (45% cms)</td>
+            <td>Alto × alto = <strong>#1 no CMS</strong></td>
+          </tr>
+          <tr>
+            <td><strong>Grupo Automob</strong></td>
+            <td>Alta + response pesada</td>
+            <td>Médio (16% cms)</td>
+            <td>Bandwidth desproporcional — <strong>investigar content type</strong></td>
+          </tr>
+        </tbody>
+      </table>
+
+      <h3 style="margin-top: 24px;">Queries para calcular fan-out per site</h3>
+
+      <h4 style="margin-top: 16px; color: #fff;">1. Requests do cms-api agrupados por siteId (empírico)</h4>
+      <p style="font-size: 13px; color: var(--text-dim);">CloudWatch Logs Insights,
+        <code>/aws/ecs/mono-cms-prod-web</code>:</p>
+      <pre
+        style="background: var(--bg); padding: 12px; border-radius: 6px; overflow-x: auto; font-size: 12px; margin: 8px 0;"><code>fields @timestamp, message
+| filter message like /GET \/content-entries\/public\/.*ms$/
+| parse message /siteId=(?&lt;siteId&gt;[a-f0-9-]{36})/
+| parse message / (?&lt;status&gt;\d+) (?&lt;size&gt;\d+) - (?&lt;duration&gt;[\d.]+) ms$/
+| filter isPresent(siteId)
+| stats count(*) as requests, sum(size)/1024/1024 as MB, avg(duration) as avgMs by siteId
+| sort requests desc
+| limit 50</code></pre>
+
+      <h4 style="margin-top: 16px; color: #fff;">2. Pageviews por site no renderer (via Span)</h4>
+      <p style="font-size: 13px; color: var(--text-dim);">New Relic NRQL, filtrando <code>styleguide.json</code>
+        (fetchado 1× por pageview):</p>
+      <pre
+        style="background: var(--bg); padding: 12px; border-radius: 6px; overflow-x: auto; font-size: 12px; margin: 8px 0;"><code>SELECT count(*) FROM Span
+WHERE appName = 'atd-workspace-renderer'
+AND http.url LIKE '%styleguide.json'
+FACET capture(http.url, r'amazonaws.com/(?&lt;site&gt;[^/]+)/styleguide')
+SINCE 1 day ago
+LIMIT 100</code></pre>
+
+      <h4 style="margin-top: 16px; color: #fff;">3. Estrutural — contar blocos dinâmicos por template no S3</h4>
+      <p style="font-size: 13px; color: var(--text-dim);">Shell direto, sem infra:</p>
+      <pre
+        style="background: var(--bg); padding: 12px; border-radius: 6px; overflow-x: auto; font-size: 12px; margin: 8px 0;"><code>SITE="www.autoparvi.com.br"
+curl -s https://ws-channels-json.s3.us-east-1.amazonaws.com/$SITE/index.json \
+  | jq '[.. | objects | select(.dynamicContents?)] | length'</code></pre>
+      <p style="font-size: 13px; color: var(--text-dim); margin-top: 8px;">
+        Rodar isso pros top 5 sites de cada conta e comparar. Geely Brasil deve retornar valores baixos (0-2 blocos por
+        página);
+        sites de dealers como Parvi/Automob devem retornar 5-15 blocos. Se o número estrutural for muito menor
+        que o fan-out empírico observado, há algum outro fator inflando (relações no CMS, etc.).
       </p>
     </div>
 
@@ -1719,36 +2100,56 @@
       </p>
     </div>
 
-    <div class="callout warning">
-      <div class="callout-title">O que ficou como hipótese, não como fato</div>
+    <div class="callout">
+      <div class="callout-title">Ground truth: os dados do CloudWatch confirmam tudo</div>
       <p>
-        Alguns pontos foram tratados no documento com forte indício mas <strong>sem medição
-          direta que os confirme</strong>. Vale registrar para não passarem despercebidos:
+        Rodar queries direto no log dos containers (log group <code>/aws/ecs/mono-cms-prod-web</code>)
+        trouxe medição sem sampling e permitiu validar quase todos os números:
       </p>
       <ul style="margin-top: 8px;">
         <li>
-          <strong>O renderer é a fonte exclusiva do cms-api público?</strong> Muito provável
-          (o renderer envia 511 rpm ao hostname do CMS e o cms-api recebe 514 rpm nos endpoints
-          públicos). Mas as duas medições cobrem escopos diferentes (todos os paths vs. só 3 endpoints),
-          então a coincidência é forte indício, não prova.
+          Total real em 24h: <strong>755.391 requests</strong> (525 rpm) — bate com o New Relic (514 rpm),
+          diferença de 2% dentro do ruído esperado.
         </li>
         <li>
-          <strong>Quanto cada pageview gera de chamadas ao CMS?</strong> A média de 1,47 chamadas
-          por pageview de conteúdo é derivada por divisão simples (514 ÷ 349,6). Não é uma medida
-          per-route; várias combinações de "% de páginas com blocos dinâmicos × avg de blocos"
-          produzem esse mesmo total.
+          <strong>Concentração massiva:</strong> Grupo Parvi (45,4%) + Grupo Automob (16,2%) = 61,6% dos
+          requests, 75,7% do bandwidth. Top 10 contas = 85% de tudo.
         </li>
         <li>
-          <strong>A discrepância de +13,4 rpm em <code>/entries/:slug</code></strong> continua
-          sem explicação medida. O único caller de <code>fetchCMS</code> encontrado no código é
-          <code>[slug]/[item].tsx:157</code>, chamado 1× por pageview. Candidatos remanescentes:
-          sampling do New Relic, retries HTTP, janelas de 24h desalinhadas entre os prints,
-          ou HEAD executando <code>getServerSideProps</code>.
+          <strong>Padrão temporal humano/comercial confirmado</strong> — vale às 03h-06h BRT (~13K/h),
+          pico às 17h BRT (~50K/h). Bot dominante daria linha reta, o que não é o caso.
         </li>
         <li>
-          <strong>A contribuição do sitemap ao CMS</strong> depende do tamanho das coleções em
-          cada site: pode variar entre 3% e 90%+ do endpoint <code>/entries</code>. Sem medir por
-          conta, é impossível cravar.
+          <strong>Bandwidth vem quase todo de <code>entries?</code></strong> (99,6% dos 37,5 GB).
+          Reforça que otimização de payload (per_page menor, _source_excludes) deve focar nesse endpoint.
+        </li>
+        <li>
+          <strong>Grupo Automob puxa responses de 119 KB médio</strong> (2,3× a média geral) — investigar
+          content type específico dessa conta é ação de alto ROI.
+        </li>
+      </ul>
+    </div>
+
+    <div class="callout warning">
+      <div class="callout-title">O que ainda ficou como hipótese</div>
+      <ul style="margin-top: 8px;">
+        <li>
+          <strong>Se o Grupo Parvi opera múltiplos sites</strong> (autoparvi, parvibyd, e possivelmente
+          geelybrasil.com.br) — o accountId em si não separa isso. Precisa rodar a Query per <code>siteId</code>
+          do <em>Seção 4c</em> para saber a distribuição.
+        </li>
+        <li>
+          <strong>Fan-out estrutural por site</strong> (média de blocos dinâmicos por página) — só será
+          medido rodando a análise do JSON do S3. É a peça que fecha o "porquê" definitivo do ranking.
+        </li>
+        <li>
+          <strong>A discrepância de +13,4 rpm em <code>/entries/:slug</code></strong> não foi resolvida.
+          Único caller no código é <code>[slug]/[item].tsx:157</code>. Candidatos remanescentes: sampling
+          do NR APM, retries HTTP, ou HEAD executando <code>getServerSideProps</code>.
+        </li>
+        <li>
+          <strong>Contribuição do sitemap ao CMS</strong> depende do tamanho das coleções em cada site
+          — não medido.
         </li>
       </ul>
     </div>
@@ -1758,25 +2159,30 @@
       <ol style="margin: 8px 0 0 20px;">
         <li>
           <strong>Implementar o cache do <code>getContentTypeById</code></strong> — resolve
-          praticamente metade do problema, funciona independentemente de qualquer outra ação.
+          praticamente metade do problema, funciona independentemente de qualquer outra ação e
+          beneficia todas as contas proporcionalmente.
         </li>
         <li>
-          <strong>Instrumentar o cms-api para atribuir cada request à rota do renderer</strong>
-          (via header ou query param). Sem isso, as demais decisões continuam sendo por
-          aproximação. Com isso, dá para medir sitemap, discrepância do <code>/entries/:slug</code>,
-          e distribuição por rota diretamente.
+          <strong>Investigar por que Grupo Automob e Grupo Via 1 têm response média de 119 KB</strong>
+          — puxam listas 3× maiores que a média (52 KB). Análise: qual content type usam, qual
+          <code>per_page</code>, se há campos pesados sem <code>_source_excludes</code>.
         </li>
         <li>
-          <strong>Cachear o resultado do <code>collectSitemapUrls</code> em Redis</strong> —
-          elimina reconstrução duplicada entre <code>/sitemap.xml</code> e <code>/api/sitemap/[name]</code>.
+          <strong>Rodar a análise de fan-out per site</strong> (queries da Seção 4c) — permite saber
+          exatamente quantos sites cada conta opera e cruzar com pageviews reais. Fecha o "porquê"
+          do ranking.
         </li>
         <li>
-          <strong>Adicionar cache HTTP para <code>/available-filters</code></strong> — o endpoint
-          muda pouco em janelas curtas e é candidato natural a CDN cache.
+          <strong>Adicionar cache HTTP para <code>/available-filters</code></strong> — endpoint muda
+          pouco, é candidato natural a CDN cache. Reduz 10-11% do volume.
         </li>
         <li>
-          <strong>Investigar os pontos da seção 12</strong> como cards separados, sem misturar
-          com o problema principal.
+          <strong>Cachear <code>collectSitemapUrls</code> em Redis</strong> — elimina duplicação entre
+          <code>/sitemap.xml</code> e <code>/api/sitemap/[name]</code>.
+        </li>
+        <li>
+          <strong>Investigar os pontos da seção 12</strong> (error rate 100%, SSR de 5,8s, overhead
+          de 108ms no OpenSearch, HEAD/404 pesados) como cards separados.
         </li>
       </ol>
     </div>
@@ -1902,6 +2308,93 @@
         scales: {
           x: { grid: { color: '#2c3540' }, ticks: { color: '#a0a8b0' } },
           y: { grid: { display: false }, ticks: { color: '#e6e6e6', font: { size: 13 } } }
+        }
+      }
+    });
+
+    // Chart: Distribuição por conta (requests % vs bandwidth %)
+    new Chart(document.getElementById('chartAccountsDistribution'), {
+      type: 'bar',
+      data: {
+        labels: [
+          'Grupo Parvi',
+          'Grupo Automob',
+          'Geely Brasil',
+          'Grupo AC Campo',
+          'Grupo Via 1',
+          'Itavema',
+          'Grupo Guiauto',
+          'Marca Motors',
+          'Nacional VW',
+          'Davanti Multimarcas',
+        ],
+        datasets: [
+          {
+            label: '% dos requests',
+            data: [45.4, 16.2, 10.4, 2.9, 2.4, 2.3, 1.6, 1.5, 1.4, 1.3],
+            backgroundColor: palette.primary,
+            borderRadius: 4,
+          },
+          {
+            label: '% do bandwidth',
+            data: [36.8, 38.9, 3.3, 2.1, 5.9, 1.5, 1.8, 0.9, 1.0, 1.0],
+            backgroundColor: palette.tertiary,
+            borderRadius: 4,
+          },
+        ],
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        indexAxis: 'y',
+        plugins: {
+          legend: { position: 'top', labels: { color: '#e6e6e6', padding: 14, font: { size: 12 } } },
+          tooltip: {
+            callbacks: {
+              label: (ctx) => `${ctx.dataset.label}: ${ctx.raw}%`,
+            },
+          },
+        },
+        scales: {
+          x: {
+            grid: { color: '#2c3540' },
+            ticks: { color: '#a0a8b0', callback: (v) => v + '%' },
+            title: { display: true, text: '% do total (requests ou bandwidth)', color: '#a0a8b0' },
+          },
+          y: {
+            grid: { display: false },
+            ticks: { color: '#e6e6e6', font: { size: 12 } },
+          },
+        },
+      },
+    });
+
+    // Chart: Timeline hora a hora do cms-api (CloudWatch)
+    new Chart(document.getElementById('chartTimeline'), {
+      type: 'line',
+      data: {
+        labels: ['19h', '20h', '21h', '22h', '23h', '00h', '01h', '02h', '03h', '04h', '05h', '06h', '07h', '08h', '09h', '10h', '11h', '12h', '13h', '14h', '15h', '16h', '17h', '18h'],
+        datasets: [{
+          label: 'Requests/hora (BRT)',
+          data: [36418, 39963, 35625, 32323, 27779, 23596, 16687, 13227, 12449, 14370, 13855, 15454, 25284, 37365, 35408, 42789, 41666, 40799, 43701, 40330, 42482, 42154, 50095, 31631],
+          borderColor: palette.primary,
+          backgroundColor: 'rgba(74, 222, 128, 0.15)',
+          fill: true,
+          tension: 0.3,
+          borderWidth: 2,
+          pointRadius: 3,
+        }]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+          legend: { position: 'top', labels: { color: '#e6e6e6', font: { size: 12 } } },
+          tooltip: { callbacks: { label: (ctx) => `${ctx.raw.toLocaleString('pt-BR')} req/h` } }
+        },
+        scales: {
+          x: { grid: { color: '#2c3540' }, ticks: { color: '#a0a8b0', font: { size: 11 } }, title: { display: true, text: 'Hora BRT', color: '#a0a8b0' } },
+          y: { grid: { color: '#2c3540' }, ticks: { color: '#a0a8b0' }, beginAtZero: true }
         }
       }
     });
