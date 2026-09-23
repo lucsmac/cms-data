@@ -407,6 +407,7 @@
       <li><a href="#content-types">Content types por complexidade (fan-out interno)</a></li>
       <li><a href="#sitemap">Volume de entries publicadas por conta</a></li>
       <li><a href="#canais-densos">Canais mais densos em blocos dinâmicos</a></li>
+      <li><a href="#top4-observado">Deep-dive: top 4 contas por requests observados no CMS</a></li>
       <li><a href="#anomalias">Anomalias e pontos de atenção</a></li>
     </ol>
 
@@ -1743,6 +1744,259 @@
           otimização em batch</strong>: consertar uma template ajuda vários clientes de uma vez.</p>
     </div>
 
+    <h2 id="top4-observado">Deep-dive: top 4 contas por requests observados no CMS</h2>
+
+    <p>Fonte dos <strong>observados</strong>: CloudWatch Logs Insights, log do cms-api
+      (<code>/aws/ecs/mono-cms-prod-web</code>), janela de 7 dias 2026-09-04 → 2026-09-11 (ver <a
+        href="./queries-logs/dados-consolidados.json">queries-logs/dados-consolidados.json</a>). Fonte da
+      <strong>estrutura</strong>: nossos CSVs (H05, H07).</p>
+
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>#</th>
+            <th>accountId</th>
+            <th>Cliente</th>
+            <th style="text-align:right;">Req/dia observado</th>
+            <th style="text-align:right;">Canais</th>
+            <th style="text-align:right;">Páginas</th>
+            <th style="text-align:right;">Blocos totais</th>
+            <th style="text-align:right;">% páginas sem bloco</th>
+            <th style="text-align:right;">Avg blocos/pág densa</th>
+            <th style="text-align:right;">Máx blocos</th>
+            <th style="text-align:right;">Req/dia por bloco</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr class="danger">
+            <td class="num">1</td>
+            <td><span class="id"
+                data-copy="0d745691-25fe-4b76-ae43-868c4fe7e94e">0d745691-25fe-4b76-ae43-868c4fe7e94e</span></td>
+            <td class="strong">Grupo Parvi</td>
+            <td class="num highlight">279.163</td>
+            <td class="num">18</td>
+            <td class="num">282</td>
+            <td class="num">479</td>
+            <td class="num">27,7%</td>
+            <td class="num">2,35</td>
+            <td class="num">13</td>
+            <td class="num">583</td>
+          </tr>
+          <tr>
+            <td class="num">2</td>
+            <td><span class="id"
+                data-copy="d5e73610-b663-48d5-b6cd-cd455f5d8fd8">d5e73610-b663-48d5-b6cd-cd455f5d8fd8</span></td>
+            <td class="strong">Geely Brasil <span style="font-size: 11px; color: var(--success); font-weight: 600;">(#1
+                tráfego humano)</span></td>
+            <td class="num highlight">86.725</td>
+            <td class="num">1</td>
+            <td class="num">132</td>
+            <td class="num highlight">11</td>
+            <td class="num highlight">95,5%</td>
+            <td class="num">1,83</td>
+            <td class="num">3</td>
+            <td class="num highlight">7.884</td>
+          </tr>
+          <tr>
+            <td class="num">3</td>
+            <td><span class="id"
+                data-copy="703d2f91-1a5c-4dc1-a742-ae5c7eb7df89">703d2f91-1a5c-4dc1-a742-ae5c7eb7df89</span></td>
+            <td class="strong">Grupo Automob</td>
+            <td class="num highlight">84.312</td>
+            <td class="num">20</td>
+            <td class="num">400</td>
+            <td class="num">712</td>
+            <td class="num">27,0%</td>
+            <td class="num">2,44</td>
+            <td class="num">13</td>
+            <td class="num">118</td>
+          </tr>
+          <tr>
+            <td class="num">4</td>
+            <td><span class="id"
+                data-copy="2a3cd82b-8548-4d2b-a6d0-08e2db1e8534">2a3cd82b-8548-4d2b-a6d0-08e2db1e8534</span></td>
+            <td class="strong">Grupo AC Campo</td>
+            <td class="num highlight">21.437</td>
+            <td class="num">3</td>
+            <td class="num">88</td>
+            <td class="num">154</td>
+            <td class="num">26,1%</td>
+            <td class="num">2,37</td>
+            <td class="num">12</td>
+            <td class="num">139</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="chart-wrapper tall"><canvas id="chartTop4Cross"></canvas></div>
+
+    <div class="callout">
+      <div class="callout-title">Geely é caso de sucesso, não anomalia</div>
+      <p>Geely Brasil é <strong>o site com maior tráfego humano do parque</strong> (34% das pageviews do renderer,
+        conforme <a href="./diagnostico-volume-opensearch.html">diagnóstico Bonsai</a>) — é caso de sucesso de marca em
+        ascensão. Gera <strong>86.725 req/dia ao CMS com só 11 blocos dinâmicos no site inteiro</strong>, dando
+        <strong>7.884 requests/dia por bloco</strong> (13× o ratio do Parvi, 67× o do Automob). Isso não é problema — é
+        a razão de <em>ter poucos blocos</em> mostrando bom retorno: <strong>o site é institucional/estático por
+          design</strong> e absorve tráfego massivo sem multiplicar carga no CMS.</p>
+      <p style="margin-top: 8px;">Se o site do Geely tivesse a complexidade estrutural do Parvi (2,35 blocos/página ×
+        282 páginas), o volume ao CMS explodiria para a ordem de <strong>~5M req/dia</strong> — bem acima do observado
+        no parque inteiro. O padrão "site institucional + tráfego alto" é <em>arquitetura ideal</em> para minimizar
+        custo no CMS.</p>
+    </div>
+
+    <div class="callout warning">
+      <div class="callout-title">Parvi é o alvo real de otimização</div>
+      <p>Parvi combina <strong>alta densidade estrutural</strong> (18 canais, 479 blocos, 2,35 blocos/página densa, max
+        13) <strong>com tráfego humano robusto</strong> — ambos casam e resultam em <strong>45,4% de todo o tráfego
+          observado no CMS</strong>. É o cliente onde cada otimização (dedup, cache de ContentType, endpoint batch) tem
+        <em>maior impacto absoluto</em>. AC Campo (139 req/bloco/dia) e Automob (118) puxam esse ratio pra baixo porque
+        tráfego humano deles é menor que a complexidade estrutural sugeriria — otimizar template para o Parvi
+        automaticamente beneficia essas contas também.</p>
+    </div>
+
+    <div class="callout">
+      <div class="callout-title">Automob é rico em canais dormentes</div>
+      <p>De 20 canais do Automob, <strong>10 têm zero blocos dinâmicos</strong> (Portal Grupo, Madre Seguros, Mega
+        Feirão SP, LPs de Assinatura/Blindados, TService, Consórcio). Os outros 12 são dealers padrão de complexidade
+        média (VW/BMW/Honda/Toyota/BYD/Hyundai). Isso explica por que apesar dos 712 blocos totais, o tráfego real
+        (84k/dia) é bem menor que a projeção estrutural.</p>
+    </div>
+
+    <h3>Canais mais densos de cada conta</h3>
+    <p>Os canais com maior p95 dentro de cada uma das top 4 contas — bons alvos para otimização de template.</p>
+
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Conta</th>
+            <th>channelId</th>
+            <th>Canal</th>
+            <th style="text-align:right;">Páginas</th>
+            <th style="text-align:right;">Média</th>
+            <th style="text-align:right;">p95</th>
+            <th style="text-align:right;">Máx</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td rowspan="4" class="strong" style="vertical-align: top; padding-top: 14px;">Parvi</td>
+            <td><span class="id"
+                data-copy="9efcec8b-2df4-42a2-be10-614212148cfa">9efcec8b-2df4-42a2-be10-614212148cfa</span></td>
+            <td class="strong">Hyundai Parvi</td>
+            <td class="num">26</td>
+            <td class="num">2,69</td>
+            <td class="num warning">8,0</td>
+            <td class="num">9</td>
+          </tr>
+          <tr>
+            <td><span class="id"
+                data-copy="ec3ffa27-4f78-4c68-8dc0-bdfe70d19aad">ec3ffa27-4f78-4c68-8dc0-bdfe70d19aad</span></td>
+            <td class="strong">Toyota Toyolex</td>
+            <td class="num">26</td>
+            <td class="num">2,38</td>
+            <td class="num warning">6,8</td>
+            <td class="num">9</td>
+          </tr>
+          <tr>
+            <td><span class="id"
+                data-copy="4fd49f08-8878-487f-8b5c-1ad4770d6901">4fd49f08-8878-487f-8b5c-1ad4770d6901</span></td>
+            <td class="strong">Parvi BYD</td>
+            <td class="num">32</td>
+            <td class="num">2,28</td>
+            <td class="num">5,4</td>
+            <td class="num">12</td>
+          </tr>
+          <tr>
+            <td><em>Bremen VW</em></td>
+            <td class="dim">(id no CSV)</td>
+            <td class="num">35</td>
+            <td class="num">2,17</td>
+            <td class="num">5,0</td>
+            <td class="num">13</td>
+          </tr>
+
+          <tr>
+            <td rowspan="4" class="strong" style="vertical-align: top; padding-top: 14px;">Automob</td>
+            <td class="dim">Green Automóveis VW</td>
+            <td class="strong">(dealer VW)</td>
+            <td class="num">35</td>
+            <td class="num">2,26</td>
+            <td class="num">5,9</td>
+            <td class="num">13</td>
+          </tr>
+          <tr>
+            <td class="dim">Alta Veículos VW</td>
+            <td class="strong">(dealer VW)</td>
+            <td class="num">36</td>
+            <td class="num">2,19</td>
+            <td class="num">5,8</td>
+            <td class="num">13</td>
+          </tr>
+          <tr>
+            <td class="dim">Original VW</td>
+            <td class="strong">(dealer VW)</td>
+            <td class="num">35</td>
+            <td class="num">2,23</td>
+            <td class="num">5,6</td>
+            <td class="num">13</td>
+          </tr>
+          <tr>
+            <td class="dim">BMW Autostar</td>
+            <td class="strong">(dealer BMW)</td>
+            <td class="num">38</td>
+            <td class="num">1,92</td>
+            <td class="num">5,4</td>
+            <td class="num">12</td>
+          </tr>
+
+          <tr>
+            <td rowspan="3" class="strong" style="vertical-align: top; padding-top: 14px;">AC Campo</td>
+            <td class="dim">Honda Auto Campo</td>
+            <td class="strong">(dealer Honda)</td>
+            <td class="num">40</td>
+            <td class="num">1,93</td>
+            <td class="num">5,0</td>
+            <td class="num">12</td>
+          </tr>
+          <tr>
+            <td class="dim">Honda Moto Raça</td>
+            <td class="strong">(dealer Honda Moto)</td>
+            <td class="num">24</td>
+            <td class="num">1,63</td>
+            <td class="num">4,8</td>
+            <td class="num">9</td>
+          </tr>
+          <tr>
+            <td class="dim">Honda Moto Campo</td>
+            <td class="strong">(dealer Honda Moto)</td>
+            <td class="num">24</td>
+            <td class="num">1,58</td>
+            <td class="num">4,8</td>
+            <td class="num">9</td>
+          </tr>
+
+          <tr>
+            <td class="strong">Geely</td>
+            <td class="dim">Geely Brasil (único)</td>
+            <td class="strong">Geely Brasil</td>
+            <td class="num">132</td>
+            <td class="num">0,08</td>
+            <td class="num success">0,0</td>
+            <td class="num">3</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <p class="hint">Padrão notável nos VW do Automob (Green, Alta, Original) e nos Audi/BMW no dashboard geral: valores
+      <strong>quase idênticos</strong> → mesma template. Otimizar 1 template beneficia N canais/clientes. Rankings
+      completos em <a
+        href="./analise-volume/hosting/h07-dynamic-distribution-per-channel.csv">h07-dynamic-distribution-per-channel.csv</a>.
+    </p>
+
     <h2 id="anomalias">Anomalias e pontos de atenção</h2>
 
     <ul>
@@ -2028,6 +2282,61 @@
             ticks: { color: '#e6e6e6', maxRotation: 60, minRotation: 45, font: { size: 10 } }
           },
           y: { beginAtZero: true, grid: { color: '#2c3540' }, ticks: { color: '#a0a8b0' } }
+        }
+      }
+    });
+
+    // Top 4 cross: observado × estrutural
+    new Chart(document.getElementById('chartTop4Cross'), {
+      type: 'bar',
+      data: {
+        labels: ['Grupo Parvi', 'Geely Brasil', 'Grupo Automob', 'Grupo AC Campo'],
+        datasets: [
+          {
+            label: 'Req/dia observados no CMS',
+            data: [279163, 86725, 84312, 21437],
+            backgroundColor: '#f87171',
+            borderRadius: 4,
+            yAxisID: 'y'
+          },
+          {
+            label: 'Blocos dinâmicos totais no site',
+            data: [479, 11, 712, 154],
+            backgroundColor: '#38bdf8',
+            borderRadius: 4,
+            yAxisID: 'y1'
+          },
+          {
+            label: 'Req/dia por bloco (eficiência)',
+            data: [583, 7884, 118, 139],
+            backgroundColor: '#c084fc',
+            borderRadius: 4,
+            yAxisID: 'y1'
+          }
+        ]
+      },
+      options: {
+        responsive: true, maintainAspectRatio: false,
+        plugins: {
+          legend: { position: 'top', labels: { color: '#e6e6e6' } },
+          tooltip: {
+            callbacks: {
+              label: (ctx) => `${ctx.dataset.label}: ${ctx.raw.toLocaleString('pt-BR')}`
+            }
+          }
+        },
+        scales: {
+          x: { grid: { display: false }, ticks: { color: '#e6e6e6' } },
+          y: {
+            type: 'linear', position: 'left', beginAtZero: true,
+            grid: { color: '#2c3540' }, ticks: { color: '#f87171' },
+            title: { display: true, text: 'Req/dia observados', color: '#f87171' }
+          },
+          y1: {
+            type: 'logarithmic', position: 'right', beginAtZero: true,
+            grid: { display: false }, ticks: { color: '#38bdf8' },
+            title: { display: true, text: 'Blocos totais / Req por bloco (log)', color: '#38bdf8' }
+          }
         }
       }
     });
